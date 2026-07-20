@@ -1,7 +1,8 @@
 export type Step = 'start' | 'create' | 'edit' | 'publish' | 'results' | 'export'
 export type DemoMode = 'normal' | 'empty' | 'failure'
 export type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error'
-export type QuestionType = 'short_text' | 'long_text' | 'select' | 'checkbox' | 'consent'
+export type QuestionType = 'short_text' | 'long_text' | 'select' | 'checkbox' | 'consent' | 'rating' | 'number'
+export type FormType = 'application' | 'satisfaction' | 'demand_survey' | 'general'
 
 export interface ProgramInfo {
   programName: string
@@ -19,6 +20,29 @@ export interface FormQuestion {
   label: string
   type: QuestionType
   required: boolean
+  options?: string[]
+}
+
+export interface GeneratedForm {
+  formType: FormType
+  program: ProgramInfo
+  questions: FormQuestion[]
+  reviewNotes: string[]
+}
+
+export interface StoredFormResponse {
+  id: string
+  answers: Record<string, string | boolean | number>
+}
+
+export interface QuestionSummary {
+  questionId: number
+  label: string
+  type: QuestionType
+  responseCount: number
+  average?: number
+  distribution?: Array<{ label: string; count: number }>
+  texts?: string[]
 }
 
 export interface ResultStats {
@@ -43,4 +67,3 @@ export interface ResponseTopic {
   sourceIds: number[]
   reportSentence: string
 }
-
