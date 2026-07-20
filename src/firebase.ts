@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getAnalytics, isSupported } from 'firebase/analytics'
+import { ReCaptchaEnterpriseProvider, initializeAppCheck } from 'firebase/app-check'
 import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth'
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
 import { Timestamp, collection, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, setDoc, where } from 'firebase/firestore'
@@ -18,6 +19,23 @@ const firebaseConfig = {
 export const firebaseConfigured = Object.values(firebaseConfig).every(Boolean)
 export const demoAuthEnabled = import.meta.env.VITE_ENABLE_DEMO_AUTH === 'true'
 const firebaseApp = firebaseConfigured ? initializeApp(firebaseConfig) : null
+
+// App Check debug mode is enabled only by Vite's local development build.
+// Firebase creates the debug token in the browser; never put that token in source control.
+if (firebaseApp && import.meta.env.DEV) {
+  ;(self as typeof self & { FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean }).FIREBASE_APPCHECK_DEBUG_TOKEN = true
+  initializeAppCheck(firebaseApp, {
+    // The provider is bypassed while the SDK is in debug mode.
+    provider: new ReCaptchaEnterpriseProvider('local-debug-provider'),
+    isTokenAutoRefreshEnabled: true,
+  })
+} else if (firebaseApp && import.meta.env.VITE_FIREBASE_APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY) {
+  initializeAppCheck(firebaseApp, {
+    provider: new ReCaptchaEnterpriseProvider(import.meta.env.VITE_FIREBASE_APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY),
+    isTokenAutoRefreshEnabled: true,
+  })
+}
+
 export const auth = firebaseApp ? getAuth(firebaseApp) : null
 export const db = firebaseApp ? getFirestore(firebaseApp) : null
 const googleProvider = new GoogleAuthProvider()
