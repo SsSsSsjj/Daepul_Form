@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsForm(formId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid == request.auth.uid;
+    }
+
+    match /forms/{formId} {
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if signedIn() && (resource.data.published == true || resource.data.ownerUid == request.auth.uid);
+      allow update: if ownsForm(formId) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if ownsForm(formId);
+
+      match /responses/{responseUid} {
+        allow create: if signedIn()
+          && responseUid == request.auth.uid
+          && !exists(/databases/$(database)/documents/forms/$(formId)/responses/$(responseUid))
+          && get(/databases/$(database)/documents/forms/$(formId)).data.published == true;
+        allow read: if ownsForm(formId);
+        allow update, delete: if false;
+      }
+
+      match /analysis/{analysisId} {
+        allow read, create, update: if ownsForm(formId);
+        allow delete: if false;
+      }
+    }
+  }
+}
+
