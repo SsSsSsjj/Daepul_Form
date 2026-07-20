@@ -1,0 +1,22 @@
+.danger {
+  border-color: #e7b8b1;
+  color: #b33d2d;
+  background: #fff7f5;
+  font-weight: 700;
+}
+
+.manage-list article {
+  grid-template-columns: 1fr 110px 110px 88px;
+  gap: 8px;
+}
+
+@media (max-width: 760px) {
+  .manage-list article {
+    grid-template-columns: 1fr auto;
+  }
+
+  .manage-list article .danger,
+  .manage-list article .primary {
+    grid-column: auto;
+  }
+}

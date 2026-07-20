@@ -3,7 +3,7 @@ import { getAnalytics, isSupported } from 'firebase/analytics'
 import { ReCaptchaEnterpriseProvider, initializeAppCheck } from 'firebase/app-check'
 import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, type User } from 'firebase/auth'
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
-import { Timestamp, collection, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, setDoc, where } from 'firebase/firestore'
+import { Timestamp, collection, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore'
 import type { FormQuestion, FormType, GeneratedForm, ProgramInfo, ResponseTopic, ResultStats, StoredFormResponse } from './types'
 
 const firebaseConfig = {
@@ -109,6 +109,19 @@ export async function getOwnedForms(userUid: string) {
     const data = item.data()
     return { id: item.id, title: String(data.program?.programName ?? '제목 없는 폼'), published: data.published === true, responseCount: responses.size }
   }))
+}
+
+export async function deleteFormRecord(formId: string) {
+  if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
+  const [responses, analyses] = await Promise.all([
+    getDocs(collection(db, 'forms', formId, 'responses')),
+    getDocs(collection(db, 'forms', formId, 'analysis')),
+  ])
+  const batch = writeBatch(db)
+  responses.docs.forEach((item) => batch.delete(item.ref))
+  analyses.docs.forEach((item) => batch.delete(item.ref))
+  batch.delete(doc(db, 'forms', formId))
+  await batch.commit()
 }
 
 export async function getFormResponses(formId: string): Promise<StoredFormResponse[]> {

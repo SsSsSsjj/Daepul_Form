@@ -23,14 +23,14 @@ service cloud.firestore {
           && !exists(/databases/$(database)/documents/forms/$(formId)/responses/$(responseUid))
           && get(/databases/$(database)/documents/forms/$(formId)).data.published == true;
         allow read: if ownsForm(formId);
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if ownsForm(formId);
       }
 
       match /analysis/{analysisId} {
         allow read, create, update: if ownsForm(formId);
-        allow delete: if false;
+        allow delete: if ownsForm(formId);
       }
     }
   }
 }
-

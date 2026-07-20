@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent 
 import { CheckCircle2, ChevronDown, Copy, FileText, LayoutDashboard, LoaderCircle, LogIn, LogOut, Palette, Plus, QrCode, RefreshCcw, Send, Sparkles, Trash2, Upload, UserRound, WandSparkles } from 'lucide-react'
 import QRCode from 'qrcode'
 import {
-  firebaseConfigured, generateFormFromDocuments, getFormResponses, getOwnedForms, getPublishedForm,
+  deleteFormRecord, firebaseConfigured, generateFormFromDocuments, getFormResponses, getOwnedForms, getPublishedForm,
   hasSubmittedResponse, logout, observeAuthState, publishFormRecord, signInWithGoogle,
   submitResponseOnce, summarizeResponses, type FirebaseUser,
 } from './firebase'
@@ -62,6 +62,7 @@ export default function App() {
   const [resultLoading, setResultLoading] = useState(false)
   const [topics, setTopics] = useState<ResponseTopic[]>([])
   const [ownedForms, setOwnedForms] = useState<OwnedForm[]>([])
+  const [deletingFormId, setDeletingFormId] = useState('')
   const [publicFormLoaded, setPublicFormLoaded] = useState(false)
   const [qr, setQr] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -125,6 +126,17 @@ export default function App() {
     setMenuOpen(false); setPage('manage'); setResultLoading(true)
     try { setOwnedForms(await getOwnedForms(user.uid)) } catch { setMessage('내 폼 목록을 불러오지 못했습니다.') } finally { setResultLoading(false) }
   }
+  const deleteOwnedForm = async (form: OwnedForm) => {
+    if (!window.confirm(`“${form.title}” 폼과 응답 ${form.responseCount}건을 모두 삭제할까요?\n삭제한 데이터는 복구할 수 없습니다.`)) return
+    setDeletingFormId(form.id); setMessage('')
+    try {
+      await deleteFormRecord(form.id)
+      setOwnedForms((current) => current.filter((item) => item.id !== form.id))
+      setMessage('폼과 관련 응답·분석 데이터를 삭제했습니다.')
+      if (form.id === formId) { setPublished(false); setFormId(newFormId()) }
+    } catch { setMessage('폼을 삭제하지 못했습니다. 제작자 계정인지 확인한 뒤 다시 시도해 주세요.') }
+    finally { setDeletingFormId('') }
+  }
 
   if (!authReady) return <div className="center"><LoaderCircle className="spin" /></div>
   if (!user) return <Login loading={loginLoading} error={authError} onLogin={login} />
@@ -137,7 +149,7 @@ export default function App() {
       {page === 'edit' && <section><Title step="2" title="AI가 만든 폼을 확인하세요" text="문서에서 확실하지 않은 내용은 검토 항목으로 표시합니다."/>{reviewNotes.length > 0 && <div className="notice warn"><b>사람이 확인할 항목</b>{reviewNotes.map((note) => <span key={note}>• {note}</span>)}</div>}<div className="grid edit"><div><div className="card form-fields"><h2>폼 기본 정보</h2><label>폼 제목<input value={program.programName} onChange={(e) => setProgram({...program, programName:e.target.value})}/></label><label>설명<textarea value={program.description} onChange={(e) => setProgram({...program, description:e.target.value})}/></label><div className="grid two"><label>대상<input value={program.target} onChange={(e) => setProgram({...program, target:e.target.value})}/></label><label>기간<input value={program.period} onChange={(e) => setProgram({...program, period:e.target.value})}/></label></div></div><div className="card"><div className="row"><h2>질문 {questions.length}개</h2><button onClick={() => setQuestions([...questions,{id:Date.now(),label:'새 질문',type:'short_text',required:false}])}><Plus size={16}/> 질문 추가</button></div>{questions.map((q) => <div className="question" key={q.id}><input value={q.label} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,label:e.target.value}:item))}/><select value={q.type} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,type:e.target.value as FormQuestion['type']}:item))}>{Object.entries(typeLabels).map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select><label className="check"><input type="checkbox" checked={q.required} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,required:e.target.checked}:item))}/>필수</label><button onClick={() => setQuestions(questions.filter((item) => item.id!==q.id))}><Trash2 size={16}/></button></div>)}</div></div><aside className="card preview"><h2>미리보기</h2><FormBody program={program} questions={questions} theme={theme}/></aside></div><div className="actions between"><button onClick={() => setPage('create')}>자료 다시 선택</button><button className="primary" onClick={() => setPage('publish')}>디자인·배포 설정</button></div></section>}
       {page === 'publish' && <section><Title step="3" title="디자인을 고르고 실제로 배포하세요" text="배포하면 로그인한 응답자가 사용할 수 있는 공개 링크와 QR이 생성됩니다."/><div className="grid two"><div className="card"><h2><Palette size={20}/> 폼 디자인</h2><div className="themes">{(['green','blue','coral'] as Theme[]).map((item) => <button key={item} className={`${item} ${theme===item?'selected':''}`} onClick={() => setTheme(item)}><i/><b>{item==='green'?'차분한 그린':item==='blue'?'신뢰감 있는 블루':'따뜻한 코랄'}</b></button>)}</div><FormBody program={program} questions={questions} theme={theme}/></div><div className="card publish-card"><h2>공개 설정</h2><label>설문 종료일<input type="date" value={endDate} onChange={(e)=>setEndDate(e.target.value)}/></label><button className="primary wide" onClick={() => void publish()} disabled={publishLoading}>{publishLoading?<LoaderCircle className="spin"/>:<Send/>} 실제 폼 배포하기</button>{message && <Notice text={message}/>} {published && <div className="share"><CheckCircle2/><h3>배포 완료</h3>{qr?<img src={qr} alt="공개 폼 QR 코드"/>:<QrCode/>}<div className="copy"><input readOnly value={shareLink}/><button onClick={() => void navigator.clipboard.writeText(shareLink)}><Copy/></button></div><a className="primary link" href={shareLink} target="_blank">응답 화면 열기</a></div>}</div></div><div className="actions between"><button onClick={() => setPage('edit')}>폼 수정</button><button className="primary" onClick={() => void loadResults()} disabled={resultLoading}>응답 결과 보기</button></div></section>}
       {page === 'results' && <Results title={program.programName} loading={resultLoading} responses={responses} summaries={summaries} topics={topics} message={message} onRefresh={() => void loadResults()}/>} 
-      {page === 'manage' && <section><Title step="" title="내가 만든 폼" text="폼별 공개 상태와 실제 신청 인원을 확인할 수 있습니다."/>{resultLoading?<div className="center"><LoaderCircle className="spin"/></div>:<div className="manage-list">{ownedForms.length?ownedForms.map((form)=><article className="card" key={form.id}><div><span className="badge">{form.published?'공개 중':'초안'}</span><h2>{form.title}</h2><small>{form.id}</small></div><strong>{form.responseCount}<small>명 응답</small></strong><button className="primary" onClick={() => void loadResults(form.id)}>결과 보기</button></article>):<div className="empty card">아직 배포한 폼이 없습니다.<button className="primary" onClick={()=>setPage('create')}>첫 폼 만들기</button></div>}</div>}</section>}
+      {page === 'manage' && <section><Title step="" title="내가 만든 폼" text="폼별 공개 상태와 실제 신청 인원을 확인할 수 있습니다."/>{message&&<Notice text={message}/>} {resultLoading?<div className="center"><LoaderCircle className="spin"/></div>:<div className="manage-list">{ownedForms.length?ownedForms.map((form)=><article className="card" key={form.id}><div><span className="badge">{form.published?'공개 중':'초안'}</span><h2>{form.title}</h2><small>{form.id}</small></div><strong>{form.responseCount}<small>명 응답</small></strong><button className="primary" onClick={() => void loadResults(form.id)}>결과 보기</button><button className="danger" disabled={deletingFormId===form.id} onClick={() => void deleteOwnedForm(form)}>{deletingFormId===form.id?<LoaderCircle className="spin" size={16}/>:<Trash2 size={16}/>} 삭제</button></article>):<div className="empty card">아직 배포한 폼이 없습니다.<button className="primary" onClick={()=>setPage('create')}>첫 폼 만들기</button></div>}</div>}</section>}
     </main>
   </div>
 }
