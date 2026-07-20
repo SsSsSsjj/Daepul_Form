@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app'
 import { getAnalytics, isSupported } from 'firebase/analytics'
 import { ReCaptchaEnterpriseProvider, initializeAppCheck } from 'firebase/app-check'
-import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth'
+import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, type User } from 'firebase/auth'
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
 import { Timestamp, collection, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, setDoc, where } from 'firebase/firestore'
 import type { FormQuestion, FormType, GeneratedForm, ProgramInfo, ResponseTopic, ResultStats, StoredFormResponse } from './types'
@@ -45,7 +45,16 @@ if (firebaseApp && firebaseConfig.measurementId) void isSupported().then((ok) =>
 
 export async function signInWithGoogle() {
   if (!auth) throw new Error('Firebase가 설정되지 않았습니다.')
-  return (await signInWithPopup(auth, googleProvider)).user
+  try {
+    return (await signInWithPopup(auth, googleProvider)).user
+  } catch (error) {
+    const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+    if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/web-storage-unsupported'].includes(code)) {
+      await signInWithRedirect(auth, googleProvider)
+      return null
+    }
+    throw error
+  }
 }
 
 export async function logout() {
