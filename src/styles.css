@@ -12,3 +12,51 @@
 .bars{gap:12px;margin-top:18px}.bars>div{grid-template-columns:90px 1fr 52px}.bars i{height:11px}.bars i b{min-width:2px}
 .bars strong{display:flex;flex-direction:column;align-items:flex-end;font-size:14px}.bars strong small{font-size:10px;color:#71817d}
 @media(max-width:760px){.result-head{flex-direction:column}.result-actions{display:grid;grid-template-columns:1fr 1fr}.bars>div{grid-template-columns:70px 1fr 46px}.public-actions{padding:18px 16px 22px}}
+
+/* Seasonal form theme selector */
+.themes{grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:12px}
+.themes .theme-option{min-height:126px;padding:0;overflow:hidden;display:flex;flex-direction:column;align-items:stretch;text-align:left;border:1px solid #d7e1dd;background:#fff;transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease}
+.themes .theme-option:hover{transform:translateY(-2px);box-shadow:0 10px 24px #163b3018}
+.themes .theme-option:focus-visible{outline:3px solid #247a6750;outline-offset:2px}
+.themes .theme-option.selected{outline:0;border-color:var(--option-accent,var(--accent));box-shadow:0 0 0 3px color-mix(in srgb,var(--option-accent,var(--accent)) 22%,transparent),0 10px 24px #163b3018}
+.theme-swatch{height:58px;display:grid;place-items:center;position:relative;overflow:hidden}
+.theme-swatch::before,.theme-swatch::after{content:"";position:absolute;border-radius:999px;opacity:.55}
+.theme-swatch::before{width:62px;height:62px;right:-20px;top:-28px;background:#fff}
+.theme-swatch::after{width:44px;height:44px;left:-18px;bottom:-24px;background:#fff}
+.theme-swatch svg{width:25px;height:25px;position:relative;z-index:1}
+.theme-option.green{--option-accent:#247a67}.theme-option.green .theme-swatch{color:#18594c;background:linear-gradient(135deg,#dff2e9,#b8dfd1)}
+.theme-option.spring{--option-accent:#b53f70}.theme-option.spring .theme-swatch{color:#9f315f;background:linear-gradient(135deg,#ffe4ef,#dff3d2)}
+.theme-option.summer{--option-accent:#087c88}.theme-option.summer .theme-swatch{color:#08727d;background:linear-gradient(135deg,#d9f7f8,#bde1ff)}
+.theme-option.autumn{--option-accent:#a64d24}.theme-option.autumn .theme-swatch{color:#91421f;background:linear-gradient(135deg,#ffe3bf,#e9b28d)}
+.theme-option.winter{--option-accent:#3b5f88}.theme-option.winter .theme-swatch{color:#345d87;background:linear-gradient(135deg,#eef6ff,#c9dcf0)}
+.theme-copy{padding:11px 12px 13px;display:flex;flex-direction:column;gap:3px}
+.theme-copy b{font-size:14px}.theme-copy small{font-size:12px;line-height:1.45;color:#667570}
+
+/* Shared seasonal tokens for preview and public response form */
+.form-body.theme-spring,.public-shell.theme-spring{--accent:#b53f70;--soft:#fde8f0;--dark:#692743;--theme-bg:#fff8fb;--theme-surface:#fffdfd;--theme-border:#efc5d6;--theme-cover:linear-gradient(135deg,#fff0f6 0%,#f9dbe8 52%,#e9f4df 100%)}
+.form-body.theme-summer,.public-shell.theme-summer{--accent:#087c88;--soft:#ddf6f7;--dark:#064f59;--theme-bg:#f2fbfc;--theme-surface:#fbffff;--theme-border:#a9dde1;--theme-cover:linear-gradient(135deg,#e4fbff 0%,#c5edf4 48%,#cfe4ff 100%)}
+.form-body.theme-autumn,.public-shell.theme-autumn{--accent:#a64d24;--soft:#fbe6d1;--dark:#5c2c19;--theme-bg:#fff9f2;--theme-surface:#fffdf9;--theme-border:#e6c09d;--theme-cover:linear-gradient(135deg,#fff0d8 0%,#f3cfaa 48%,#e8b18b 100%)}
+.form-body.theme-winter,.public-shell.theme-winter{--accent:#3b5f88;--soft:#e3edf7;--dark:#203a56;--theme-bg:#f4f8fc;--theme-surface:#fbfdff;--theme-border:#b7cadc;--theme-cover:linear-gradient(135deg,#f8fbff 0%,#dceaf7 50%,#c9d9ec 100%)}
+.form-body.theme-spring,.form-body.theme-summer,.form-body.theme-autumn,.form-body.theme-winter{background:var(--theme-bg);border-color:var(--theme-border);box-shadow:0 12px 30px color-mix(in srgb,var(--accent) 10%,transparent)}
+.public-shell.theme-spring,.public-shell.theme-summer,.public-shell.theme-autumn,.public-shell.theme-winter{background:radial-gradient(circle at 12% 8%,var(--soft),transparent 32%),radial-gradient(circle at 88% 88%,color-mix(in srgb,var(--accent) 12%,white),transparent 35%),var(--theme-bg)}
+.public-shell.theme-spring .public-form,.public-shell.theme-summer .public-form,.public-shell.theme-autumn .public-form,.public-shell.theme-winter .public-form{background:var(--theme-surface);border-color:var(--theme-border);box-shadow:0 22px 55px color-mix(in srgb,var(--accent) 14%,transparent)}
+.theme-spring .form-cover,.theme-summer .form-cover,.theme-autumn .form-cover,.theme-winter .form-cover{background:var(--theme-cover);border-top-color:var(--accent);position:relative;overflow:hidden;isolation:isolate;min-height:150px;display:flex;align-items:center}
+.form-cover-content{position:relative;z-index:2;max-width:85%}
+.seasonal-decor{position:absolute;inset:0;z-index:1;pointer-events:none}
+.seasonal-decor svg{position:absolute;color:var(--accent);opacity:.18;stroke-width:1.5}
+.seasonal-decor svg:nth-child(1){width:74px;height:74px;right:22px;top:16px;transform:rotate(12deg)}
+.seasonal-decor svg:nth-child(2){width:42px;height:42px;right:112px;bottom:16px;transform:rotate(-18deg)}
+.seasonal-decor svg:nth-child(3){width:28px;height:28px;right:18px;bottom:15px;transform:rotate(34deg)}
+.summer-decor svg:nth-child(1){opacity:.23}.summer-decor svg:nth-child(2),.summer-decor svg:nth-child(3){width:105px;height:105px;right:5px;bottom:-48px;top:auto}.summer-decor svg:nth-child(3){right:80px;bottom:-60px;opacity:.11}
+.autumn-decor svg{fill:color-mix(in srgb,var(--accent) 12%,transparent)}
+.winter-decor svg{opacity:.24}
+.theme-spring .form-question,.theme-summer .form-question,.theme-autumn .form-question,.theme-winter .form-question{margin:12px 16px;padding:17px 18px;border:1px solid var(--theme-border);border-radius:14px;background:var(--theme-surface);box-shadow:0 5px 16px color-mix(in srgb,var(--accent) 6%,transparent)}
+.theme-spring .form-question input,.theme-spring .form-question textarea,.theme-spring .form-question select,.theme-summer .form-question input,.theme-summer .form-question textarea,.theme-summer .form-question select,.theme-autumn .form-question input,.theme-autumn .form-question textarea,.theme-autumn .form-question select,.theme-winter .form-question input,.theme-winter .form-question textarea,.theme-winter .form-question select{border-color:var(--theme-border);background:#fff}
+.theme-spring .form-question :focus-visible,.theme-summer .form-question :focus-visible,.theme-autumn .form-question :focus-visible,.theme-winter .form-question :focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 24%,transparent);border-color:var(--accent)}
+.theme-spring .check-line,.theme-summer .check-line,.theme-autumn .check-line,.theme-winter .check-line{background:var(--soft);border-color:var(--theme-border)}
+.theme-spring .public-actions,.theme-summer .public-actions,.theme-autumn .public-actions,.theme-winter .public-actions{background:var(--theme-surface);border-top-color:var(--theme-border)}
+.theme-spring input[type="checkbox"],.theme-summer input[type="checkbox"],.theme-autumn input[type="checkbox"],.theme-winter input[type="checkbox"]{accent-color:var(--accent)}
+
+@media(max-width:760px){.themes{grid-template-columns:repeat(2,minmax(0,1fr))}.theme-swatch{height:52px}.theme-spring .form-question,.theme-summer .form-question,.theme-autumn .form-question,.theme-winter .form-question{margin:10px 12px;padding:16px}.seasonal-decor svg:nth-child(1){width:58px;height:58px;right:12px}.seasonal-decor svg:nth-child(2){right:70px}.form-cover-content{max-width:82%}}
+@media(max-width:420px){.themes{grid-template-columns:1fr}.themes .theme-option{min-height:104px}.theme-swatch{height:48px}.form-cover-content{max-width:78%}}
+@media(prefers-reduced-motion:reduce){.themes .theme-option{transition:none}.themes .theme-option:hover{transform:none}}
