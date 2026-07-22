@@ -157,6 +157,32 @@ export function loginFailureMessage(error: unknown, provider: LoginProvider) {
   return 'Google 로그인에 실패했습니다. 팝업 허용 및 Firebase 인증 설정을 확인해 주세요.'
 }
 
+export function aiFailureMessage(error: unknown) {
+  if (error instanceof Error && error.message.startsWith('HWP 파일')) return error.message
+
+  const details = error as { code?: unknown; customErrorData?: { status?: unknown } }
+  const code = typeof details?.code === 'string' ? details.code : ''
+  const status = Number(details?.customErrorData?.status ?? 0)
+
+  if (code === 'api-not-enabled') return 'AI 서비스 설정이 아직 반영되지 않았습니다. 잠시 후 다시 시도해 주세요.'
+  if (code === 'no-api-key' || code === 'no-app-id' || code === 'no-project-id') {
+    return 'AI 서비스 설정이 완료되지 않았습니다. 관리자에게 문의해 주세요.'
+  }
+  if (code === 'fetch-error' && (status === 401 || status === 403)) {
+    return '앱 보안 확인에 실패했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.'
+  }
+  if (code === 'fetch-error' && status === 429) return 'AI 요청이 많습니다. 잠시 후 다시 시도해 주세요.'
+  if (code === 'fetch-error' && status === 404) return '현재 AI 모델을 사용할 수 없습니다. 관리자에게 문의해 주세요.'
+  if (code === 'fetch-error' && status >= 500) return 'AI 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해 주세요.'
+  if (code === 'parse-failed' || code === 'response-error' || code === 'invalid-schema' || error instanceof SyntaxError) {
+    return 'AI 분석 결과를 처리하지 못했습니다. 다시 시도해 주세요.'
+  }
+  if (code === 'fetch-error' || (error instanceof Error && /fetch|network/i.test(error.message))) {
+    return '네트워크 연결을 확인한 뒤 다시 시도해 주세요.'
+  }
+  return 'AI 문서 분석을 실행하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+}
+
 export async function logout() {
   if (auth) await signOut(auth)
 }
