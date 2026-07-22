@@ -5,6 +5,7 @@ import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup, signI
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
 import { Timestamp, collection, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore'
 import type { FormQuestion, FormType, GeneratedForm, ProgramInfo, ResponseTopic, ResultStats, StoredFormResponse } from './types'
+import { extractHwpText, isHwpFile } from './hwp'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -165,7 +166,16 @@ export async function generateFormFromDocuments(files: File[], memo: string): Pr
   if (!firebaseApp) throw new Error('Firebase가 설정되지 않았습니다.')
   const ai = getAI(firebaseApp, { backend: new GoogleAIBackend() })
   const model = getGenerativeModel(ai, { model: 'gemini-3.5-flash', generationConfig: { responseMimeType: 'application/json', responseSchema: formSchema } })
-  const parts = await Promise.all(files.map(async (file) => ({ inlineData: { data: await fileToBase64(file), mimeType: file.type || 'application/pdf' } })))
+  const parts = await Promise.all(files.map(async (file) => {
+    if (!isHwpFile(file)) return { inlineData: { data: await fileToBase64(file), mimeType: file.type || 'application/pdf' } }
+    try {
+      const text = await extractHwpText(file)
+      return { text: `[한글 문서: ${file.name}]\n${text}` }
+    } catch (error) {
+      console.error('HWP extraction failed', error)
+      throw new Error(`HWP 파일 "${file.name}"을 읽지 못했습니다. 손상되었거나 암호가 설정된 파일인지 확인해 주세요.`)
+    }
+  }))
   const prompt = `첨부 자료를 읽고 실제 내용에 맞는 한국어 폼을 설계하세요. 만족도 조사라면 1~5점 rating과 자유의견을 포함하고, 신청서라면 신청 자격·일정·선발에 필요한 질문을 만드세요. 문서에 없는 사실은 만들지 말고 빈 문자열 또는 reviewNotes로 남기세요. 개인정보 질문은 꼭 필요한 최소한만 만드세요. 메모: ${memo || '없음'}`
   const result = await model.generateContent([...parts, { text: prompt }])
   const parsed = JSON.parse(result.response.text()) as Omit<GeneratedForm, 'questions'> & { questions: Array<Omit<FormQuestion, 'id'>> }
