@@ -46,6 +46,7 @@ const formRef = doc(owner.db, 'forms', formId)
 const responseRef = doc(respondent.db, 'forms', formId, 'responses', respondent.user.uid)
 
 try {
+  await assertDenied(getDoc(formRef), 'A missing form cannot be read before its owner creates it')
   await setDoc(formRef, { ownerUid: owner.user.uid, published: true })
 
   const initialResponse = await getDoc(responseRef)

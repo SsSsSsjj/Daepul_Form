@@ -244,7 +244,10 @@ export default function App() {
     if (!program.programName || !questions.length) { setMessage('폼 제목과 질문을 확인해 주세요.'); return }
     setPublishLoading(true); setMessage('')
     try {
-      const publishedFormId = await publishFormRecord({ formId, owner: user, program, questions, formType, surveyEndDate: endDate, theme })
+      const publishedFormId = await publishFormRecord({
+        formId, owner: user, program, questions, formType, surveyEndDate: endDate, theme,
+        checkForExistingResponses: published,
+      })
       const separatedFromExistingResponses = publishedFormId !== formId
       setFormId(publishedFormId); setPublished(true)
       setMessage(separatedFromExistingResponses

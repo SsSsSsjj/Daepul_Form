@@ -198,21 +198,23 @@ function expirationFromSurveyEnd(surveyEndDate: string) {
   return Timestamp.fromDate(expiration)
 }
 
-export async function publishFormRecord({ formId, owner, program, questions, surveyEndDate, formType = 'general', theme = 'green' }: {
-  formId: string; owner: User; program: ProgramInfo; questions: FormQuestion[]; surveyEndDate: string; formType?: FormType; theme?: string
+export async function publishFormRecord({ formId, owner, program, questions, surveyEndDate, formType = 'general', theme = 'green', checkForExistingResponses = false }: {
+  formId: string; owner: User; program: ProgramInfo; questions: FormQuestion[]; surveyEndDate: string; formType?: FormType; theme?: string; checkForExistingResponses?: boolean
 }) {
   if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
   let targetFormId = formId
-  const existingForm = await getDoc(doc(db, 'forms', formId))
-  if (existingForm.exists()) {
-    const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options }) => ({
-      id, label, type, required, options: options ?? [],
-    }))
-    const previousQuestions = (existingForm.data().questions ?? []) as FormQuestion[]
-    const questionsChanged = JSON.stringify(normalizeQuestions(previousQuestions)) !== JSON.stringify(normalizeQuestions(questions))
-    if (questionsChanged) {
-      const existingResponses = await getDocs(query(collection(db, 'forms', formId, 'responses'), limit(1)))
-      if (!existingResponses.empty) targetFormId = `form-${crypto.randomUUID().slice(0, 8)}`
+  if (checkForExistingResponses) {
+    const existingForm = await getDoc(doc(db, 'forms', formId))
+    if (existingForm.exists()) {
+      const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options }) => ({
+        id, label, type, required, options: options ?? [],
+      }))
+      const previousQuestions = (existingForm.data().questions ?? []) as FormQuestion[]
+      const questionsChanged = JSON.stringify(normalizeQuestions(previousQuestions)) !== JSON.stringify(normalizeQuestions(questions))
+      if (questionsChanged) {
+        const existingResponses = await getDocs(query(collection(db, 'forms', formId, 'responses'), limit(1)))
+        if (!existingResponses.empty) targetFormId = `form-${crypto.randomUUID().slice(0, 8)}`
+      }
     }
   }
 
