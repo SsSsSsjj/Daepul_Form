@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
-import { CheckCircle2, ChevronDown, Copy, FileText, LayoutDashboard, LoaderCircle, LogIn, LogOut, Palette, Plus, QrCode, RefreshCcw, Send, Sparkles, Trash2, Upload, UserRound, WandSparkles } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Copy, Download, FileText, LayoutDashboard, LoaderCircle, LogIn, LogOut, Palette, Plus, QrCode, RefreshCcw, Send, Sparkles, Trash2, Upload, UserRound, WandSparkles } from 'lucide-react'
 import QRCode from 'qrcode'
+import writeXlsxFile, { type SheetData } from 'write-excel-file/browser'
 import {
   deleteFormRecord, firebaseConfigured, generateFormFromDocuments, getFormResponses, getOwnedForms, getPublishedForm,
   hasSubmittedResponse, logout, observeAuthState, publishFormRecord, signInWithGoogle,
@@ -14,6 +15,51 @@ type OwnedForm = { id: string; title: string; published: boolean; responseCount:
 
 const emptyProgram: ProgramInfo = { programName: '', description: '', target: '', period: '', schedule: '', capacity: '', requirements: '', privacyConsent: '' }
 const typeLabels = { short_text: '단답형', long_text: '장문형', select: '객관식', checkbox: '체크박스', consent: '개인정보 동의', rating: '1~5점 평점', number: '숫자' }
+const draftStorageKey = 'daepul-form-creator-draft'
+
+type CreatorDraft = {
+  memo: string
+  program: ProgramInfo
+  questions: FormQuestion[]
+  formType: FormType
+  theme: Theme
+  endDate: string
+}
+
+function getCreatorDraft(): Partial<CreatorDraft> {
+  try {
+    return JSON.parse(localStorage.getItem(draftStorageKey) ?? '{}') as Partial<CreatorDraft>
+  } catch {
+    return {}
+  }
+}
+
+function answerForExcel(value: string | boolean | number | undefined) {
+  if (value === true) return '동의'
+  if (value === false) return '미동의'
+  return value ?? ''
+}
+
+async function exportResponsesToExcel(title: string, questions: FormQuestion[], responses: StoredFormResponse[], summaries: QuestionSummary[]) {
+  const responseRows: SheetData = [
+    ['응답 번호', ...questions.map((question) => question.label)],
+    ...responses.map((response, index) => [index + 1, ...questions.map((question) => answerForExcel(response.answers[String(question.id)]))]),
+  ]
+  const summaryRows: SheetData = [['질문', '유형', '응답 수', '평균', '항목', '개수', '비율']]
+  summaries.forEach((summary) => {
+    if (summary.distribution?.length) summary.distribution.forEach((item) => summaryRows.push([
+      summary.label, typeLabels[summary.type], summary.responseCount, summary.average ?? '', item.label, item.count,
+      summary.responseCount ? `${(item.count / summary.responseCount * 100).toFixed(1)}%` : '0%',
+    ]))
+    else summaryRows.push([summary.label, typeLabels[summary.type], summary.responseCount, summary.average ?? '', '', '', ''])
+  })
+
+  const safeTitle = (title || '대플폼').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80)
+  await writeXlsxFile([
+    { data: responseRows, sheet: '응답 원본', columns: [{ width: 12 }, ...questions.map((question) => ({ width: Math.min(Math.max(question.label.length + 4, 16), 40) }))], stickyRowsCount: 1 },
+    { data: summaryRows, sheet: '통계 요약', columns: [{ width: 32 }, { width: 16 }, { width: 12 }, { width: 12 }, { width: 24 }, { width: 10 }, { width: 12 }], stickyRowsCount: 1 },
+  ]).toFile(`${safeTitle}_응답결과.xlsx`)
+}
 
 function newFormId() {
   return `form-${crypto.randomUUID().slice(0, 8)}`
@@ -28,7 +74,7 @@ function analyzeStoredResponses(questions: FormQuestion[], responses: StoredForm
       return { questionId: question.id, label: question.label, type: question.type, responseCount: numbers.length, average: numbers.length ? numbers.reduce((a, b) => a + b, 0) / numbers.length : 0, distribution: labels.map((label) => ({ label, count: numbers.filter((number) => String(number) === label).length })) }
     }
     if (question.type === 'select' || question.type === 'checkbox' || question.type === 'consent') {
-      const labels = question.options?.length ? question.options : [...new Set(values.map(String))]
+      const labels = question.options?.length ? question.options : question.type === 'select' ? [...new Set(values.map(String))] : ['동의']
       return { questionId: question.id, label: question.label, type: question.type, responseCount: values.length, distribution: labels.map((label) => ({ label, count: values.filter((value) => String(value) === label || (label === '동의' && value === true)).length })) }
     }
     return { questionId: question.id, label: question.label, type: question.type, responseCount: values.length, texts: values.map(String) }
@@ -36,6 +82,7 @@ function analyzeStoredResponses(questions: FormQuestion[], responses: StoredForm
 }
 
 export default function App() {
+  const initialDraft = useMemo(getCreatorDraft, [])
   const requestedFormId = useMemo(() => new URLSearchParams(location.search).get('form'), [])
   const [user, setUser] = useState<FirebaseUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
@@ -44,17 +91,17 @@ export default function App() {
   const [page, setPage] = useState<Page>('create')
   const [menuOpen, setMenuOpen] = useState(false)
   const [files, setFiles] = useState<File[]>([])
-  const [memo, setMemo] = useState('')
+  const [memo, setMemo] = useState(initialDraft.memo ?? '')
   const [dragging, setDragging] = useState(false)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
   const [reviewNotes, setReviewNotes] = useState<string[]>([])
-  const [program, setProgram] = useState<ProgramInfo>(emptyProgram)
-  const [questions, setQuestions] = useState<FormQuestion[]>([])
-  const [formType, setFormType] = useState<FormType>('general')
-  const [theme, setTheme] = useState<Theme>('green')
+  const [program, setProgram] = useState<ProgramInfo>(initialDraft.program ?? emptyProgram)
+  const [questions, setQuestions] = useState<FormQuestion[]>(initialDraft.questions ?? [])
+  const [formType, setFormType] = useState<FormType>(initialDraft.formType ?? 'general')
+  const [theme, setTheme] = useState<Theme>(initialDraft.theme ?? 'green')
   const [formId, setFormId] = useState(newFormId)
-  const [endDate, setEndDate] = useState('2026-07-31')
+  const [endDate, setEndDate] = useState(initialDraft.endDate ?? '2026-07-31')
   const [published, setPublished] = useState(false)
   const [publishLoading, setPublishLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -71,6 +118,14 @@ export default function App() {
   const summaries = useMemo(() => analyzeStoredResponses(questions, responses), [questions, responses])
 
   useEffect(() => observeAuthState((nextUser) => { setUser(nextUser); setAuthReady(true) }), [])
+  useEffect(() => {
+    if (requestedFormId) return
+    try {
+      localStorage.setItem(draftStorageKey, JSON.stringify({ memo, program, questions, formType, theme, endDate } satisfies CreatorDraft))
+    } catch {
+      // Keep editing available even when browser storage is blocked or full.
+    }
+  }, [memo, program, questions, formType, theme, endDate, requestedFormId])
   useEffect(() => {
     if (!user || !requestedFormId || publicFormLoaded) return
     void getPublishedForm(requestedFormId).then((form) => {
@@ -151,7 +206,7 @@ export default function App() {
       {page === 'create' && <section><Title step="1" title="자료를 읽고 폼을 만듭니다" text="PDF·PNG·JPG·HWP 참고문서와 담당자 메모를 Gemini가 함께 분석합니다."/><div className="grid two"><div className="card"><h2>참고문서</h2><div className={`drop ${dragging ? 'dragging' : ''}`} onClick={() => fileRef.current?.click()} onDragOver={(e) => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}><Upload/><b>파일을 선택하거나 끌어 놓으세요</b><span>PDF, PNG, JPG, HWP, HWPX · 최대 5개</span><input ref={fileRef} hidden type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.hwp,.hwpx" onChange={onFiles}/></div>{files.map((file, i) => <div className="file" key={`${file.name}-${i}`}><FileText size={16}/><span>{file.name}</span><button onClick={() => setFiles(files.filter((_, index) => index !== i))}><Trash2 size={15}/></button></div>)}</div><div className="card"><h2>담당자 메모</h2><textarea value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 이 자료는 행사 만족도 조사입니다. 익명으로 받고 개선 의견을 자세히 물어봐 주세요."/><small>문서와 메모가 함께 AI 분석에 반영됩니다.</small></div></div>{analysisError && <Notice text={analysisError}/>}<div className="actions"><button className="primary" onClick={() => void analyze()} disabled={analysisLoading}>{analysisLoading ? <LoaderCircle className="spin"/> : <WandSparkles/>}{analysisLoading ? '문서를 읽는 중...' : 'AI로 폼 만들기'}</button></div></section>}
       {page === 'edit' && <section><Title step="2" title="AI가 만든 폼을 확인하세요" text="문서에서 확실하지 않은 내용은 검토 항목으로 표시합니다."/>{reviewNotes.length > 0 && <div className="notice warn"><b>사람이 확인할 항목</b>{reviewNotes.map((note) => <span key={note}>• {note}</span>)}</div>}<div className="grid edit"><div><div className="card form-fields"><h2>폼 기본 정보</h2><label>폼 제목<input value={program.programName} onChange={(e) => setProgram({...program, programName:e.target.value})}/></label><label>설명<textarea value={program.description} onChange={(e) => setProgram({...program, description:e.target.value})}/></label><div className="grid two"><label>대상<input value={program.target} onChange={(e) => setProgram({...program, target:e.target.value})}/></label><label>기간<input value={program.period} onChange={(e) => setProgram({...program, period:e.target.value})}/></label></div></div><div className="card"><div className="row"><h2>질문 {questions.length}개</h2><button onClick={() => setQuestions([...questions,{id:Date.now(),label:'새 질문',type:'short_text',required:false}])}><Plus size={16}/> 질문 추가</button></div>{questions.map((q) => <div className="question" key={q.id}><input value={q.label} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,label:e.target.value}:item))}/><select value={q.type} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,type:e.target.value as FormQuestion['type']}:item))}>{Object.entries(typeLabels).map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select><label className="check"><input type="checkbox" checked={q.required} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,required:e.target.checked}:item))}/>필수</label><button onClick={() => setQuestions(questions.filter((item) => item.id!==q.id))}><Trash2 size={16}/></button></div>)}</div></div><aside className="card preview"><h2>미리보기</h2><FormBody program={program} questions={questions} theme={theme}/></aside></div><div className="actions between"><button onClick={() => setPage('create')}>자료 다시 선택</button><button className="primary" onClick={() => setPage('publish')}>디자인·배포 설정</button></div></section>}
       {page === 'publish' && <section><Title step="3" title="디자인을 고르고 실제로 배포하세요" text="배포하면 로그인한 응답자가 사용할 수 있는 공개 링크와 QR이 생성됩니다."/><div className="grid two"><div className="card"><h2><Palette size={20}/> 폼 디자인</h2><div className="themes">{(['green','blue','coral'] as Theme[]).map((item) => <button key={item} className={`${item} ${theme===item?'selected':''}`} onClick={() => setTheme(item)}><i/><b>{item==='green'?'차분한 그린':item==='blue'?'신뢰감 있는 블루':'따뜻한 코랄'}</b></button>)}</div><FormBody program={program} questions={questions} theme={theme}/></div><div className="card publish-card"><h2>공개 설정</h2><label>설문 종료일<input type="date" value={endDate} onChange={(e)=>setEndDate(e.target.value)}/></label><button className="primary wide" onClick={() => void publish()} disabled={publishLoading}>{publishLoading?<LoaderCircle className="spin"/>:<Send/>} 실제 폼 배포하기</button>{message && <Notice text={message}/>} {published && <div className="share"><CheckCircle2/><h3>배포 완료</h3>{qr?<img src={qr} alt="공개 폼 QR 코드"/>:<QrCode/>}<div className="copy"><input readOnly value={shareLink}/><button onClick={() => void navigator.clipboard.writeText(shareLink)}><Copy/></button></div><a className="primary link" href={shareLink} target="_blank">응답 화면 열기</a></div>}</div></div><div className="actions between"><button onClick={() => setPage('edit')}>폼 수정</button><button className="primary" onClick={() => void loadResults()} disabled={resultLoading}>응답 결과 보기</button></div></section>}
-      {page === 'results' && <Results title={program.programName} loading={resultLoading} responses={responses} summaries={summaries} topics={topics} message={message} onRefresh={() => void loadResults()}/>} 
+      {page === 'results' && <Results title={program.programName} loading={resultLoading} responses={responses} summaries={summaries} topics={topics} message={message} onRefresh={() => void loadResults()} onExport={() => void exportResponsesToExcel(program.programName, questions, responses, summaries)}/>}
       {page === 'manage' && <section><Title step="" title="내가 만든 폼" text="폼별 공개 상태와 실제 신청 인원을 확인할 수 있습니다."/>{message&&<Notice text={message}/>} {resultLoading?<div className="center"><LoaderCircle className="spin"/></div>:<div className="manage-list">{ownedForms.length?ownedForms.map((form)=><article className="card" key={form.id}><div><span className="badge">{form.published?'공개 중':'초안'}</span><h2>{form.title}</h2><small>{form.id}</small></div><strong>{form.responseCount}<small>명 응답</small></strong><button className="primary" onClick={() => void loadResults(form.id)}>결과 보기</button><button className="danger" disabled={deletingFormId===form.id} onClick={() => void deleteOwnedForm(form)}>{deletingFormId===form.id?<LoaderCircle className="spin" size={16}/>:<Trash2 size={16}/>} 삭제</button></article>):<div className="empty card">아직 배포한 폼이 없습니다.<button className="primary" onClick={()=>setPage('create')}>첫 폼 만들기</button></div>}</div>}</section>}
     </main>
   </div>
@@ -164,12 +219,56 @@ function Notice({text}:{text:string}) { return <div className="notice">{text}</d
 function FormBody({program,questions,theme}:{program:ProgramInfo;questions:FormQuestion[];theme:Theme}) { return <div className={`form-body theme-${theme}`}><div className="form-cover"><span>{theme==='green'?'PROGRAM FORM':theme==='blue'?'OFFICIAL FORM':'WELCOME FORM'}</span><h2>{program.programName||'폼 제목'}</h2><p>{program.description||'폼 설명이 표시됩니다.'}</p></div>{questions.map((q,i)=><label className="form-question" key={q.id}><span>{i+1}. {q.label} {q.required&&<em>*</em>}</span>{q.type==='long_text'?<textarea disabled/>:q.type==='select'?<select disabled><option>선택해 주세요</option>{q.options?.map(o=><option key={o}>{o}</option>)}</select>:q.type==='rating'?<div className="rating">{[1,2,3,4,5].map(n=><i key={n}>{n}</i>)}</div>:q.type==='checkbox'||q.type==='consent'?<div className="check-line">□ 동의합니다</div>:<input disabled type={q.type==='number'?'number':'text'}/>}</label>)}</div> }
 
 function PublicForm({user,formId,program,questions,theme,endDate,onLogout}:{user:FirebaseUser;formId:string;program:ProgramInfo;questions:FormQuestion[];theme:Theme;endDate:string;onLogout:()=>void}) {
-  const [answers,setAnswers]=useState<Record<number,string|boolean|number>>({}); const [submitted,setSubmitted]=useState(false); const [loading,setLoading]=useState(true); const [error,setError]=useState('')
+  const [answers,setAnswers]=useState<Record<number,string|boolean|number>>({})
+  const [submitted,setSubmitted]=useState(false)
+  const [loading,setLoading]=useState(true)
+  const [error,setError]=useState('')
+
   useEffect(()=>{void hasSubmittedResponse(formId,user.uid).then(setSubmitted).finally(()=>setLoading(false))},[formId,user.uid])
-  const submit=async()=>{const missing=questions.find(q=>q.required&&!answers[q.id]);if(missing){setError(`필수 질문을 확인해 주세요: ${missing.label}`);return}setLoading(true);try{await submitResponseOnce({formId,user,answers,surveyEndDate:endDate});setSubmitted(true)}catch(e){setError(e instanceof Error&&e.message==='already-submitted'?'이미 제출한 폼입니다.':'제출하지 못했습니다. 다시 시도해 주세요.')}finally{setLoading(false)}}
+
+  const submit=async()=>{
+    const missing=questions.find(q=>q.required&&!answers[q.id])
+    if(missing){setError(`필수 질문을 확인해 주세요: ${missing.label}`);return}
+    setLoading(true);setError('')
+    try{await submitResponseOnce({formId,user,answers,surveyEndDate:endDate});setSubmitted(true)}
+    catch(e){setError(e instanceof Error&&e.message==='already-submitted'?'이미 제출한 폼입니다.':'제출하지 못했습니다. 다시 시도해 주세요.')}
+    finally{setLoading(false)}
+  }
+
   if(loading)return <div className="center"><LoaderCircle className="spin"/></div>
-  if(submitted)return <main className="public-shell"><div className="complete card"><CheckCircle2/><h1>이미 제출한 폼입니다</h1><p>이 Google 계정으로 제출한 응답이 있습니다. 제출 후에는 수정하거나 삭제할 수 없습니다.</p><button onClick={onLogout}><LogOut/> 로그아웃</button></div></main>
-  return <main className={`public-shell theme-${theme}`}><div className="public-user"><span>{user.email}</span><button onClick={onLogout}><LogOut/> 로그아웃</button></div><div className="public-form card"><div className="form-cover"><span>DAEPUL FORM</span><h1>{program.programName}</h1><p>{program.description}</p></div>{questions.map((q,i)=><label className="form-question" key={q.id}><span>{i+1}. {q.label} {q.required&&<em>*</em>}</span>{q.type==='long_text'?<textarea value={String(answers[q.id]??'')} onChange={e=>setAnswers({...answers,[q.id]:e.target.value})}/>:q.type==='select'?<select value={String(answers[q.id]??'')} onChange={e=>setAnswers({...answers,[q.id]:e.target.value})}><option value="">선택해 주세요</option>{(q.options?.length?q.options:['예','아니오']).map(o=><option key={o}>{o}</option>)}</select>:q.type==='rating'?<div className="rating input">{[1,2,3,4,5].map(n=><button className={answers[q.id]===n?'active':''} onClick={()=>setAnswers({...answers,[q.id]:n})} type="button" key={n}>{n}</button>)}</div>:q.type==='checkbox'||q.type==='consent'?<label className="check-line"><input type="checkbox" checked={Boolean(answers[q.id])} onChange={e=>setAnswers({...answers,[q.id]:e.target.checked})}/> 동의합니다</label>:<input type={q.type==='number'?'number':'text'} value={String(answers[q.id]??'')} onChange={e=>setAnswers({...answers,[q.id]:q.type==='number'?Number(e.target.value):e.target.value})}/>}</label>)}{error&&<Notice text={error}/>}<button className="primary wide" onClick={()=>void submit()} disabled={loading}><Send/> 응답 제출</button><small>제출된 응답은 수정하거나 삭제할 수 없습니다.</small></div></main>
+  if(submitted)return <main className="public-shell"><div className="complete card"><CheckCircle2/><h1>응답 제출 완료</h1><p>이 Google 계정으로 제출한 응답이 있습니다. 제출 후에는 수정하거나 삭제할 수 없습니다.</p><button type="button" onClick={onLogout}><LogOut/> 로그아웃</button></div></main>
+
+  return <main className={`public-shell theme-${theme}`}>
+    <div className="public-user"><span>{user.email}</span><button type="button" onClick={onLogout}><LogOut/> 로그아웃</button></div>
+    <div className="public-form card">
+      <div className="form-cover"><span>DAEPUL FORM</span><h1>{program.programName}</h1><p>{program.description}</p></div>
+      {questions.map((q,i)=>{
+        const labelId=`question-${q.id}-label`
+        const inputId=`question-${q.id}-input`
+        return <div className="form-question" key={q.id}>
+          <span id={labelId}>{i+1}. {q.label} {q.required&&<em aria-label="필수">*</em>}</span>
+          {q.type==='long_text'?<textarea id={inputId} aria-labelledby={labelId} value={String(answers[q.id]??'')} onChange={e=>setAnswers({...answers,[q.id]:e.target.value})}/>
+          :q.type==='select'?<select id={inputId} aria-labelledby={labelId} value={String(answers[q.id]??'')} onChange={e=>setAnswers({...answers,[q.id]:e.target.value})}><option value="">선택해 주세요</option>{(q.options?.length?q.options:['예','아니오']).map(o=><option key={o}>{o}</option>)}</select>
+          :q.type==='rating'?<div className="rating input" role="radiogroup" aria-labelledby={labelId}>{[1,2,3,4,5].map(n=><button className={answers[q.id]===n?'active':''} aria-checked={answers[q.id]===n} role="radio" onClick={()=>setAnswers({...answers,[q.id]:n})} type="button" key={n}>{n}</button>)}</div>
+          :q.type==='checkbox'||q.type==='consent'?<label className="check-line" htmlFor={inputId}><input id={inputId} type="checkbox" checked={Boolean(answers[q.id])} onChange={e=>setAnswers({...answers,[q.id]:e.target.checked})}/><span>{q.type==='consent'?'개인정보 수집·이용에 동의합니다.':'동의합니다.'}</span></label>
+          :<input id={inputId} aria-labelledby={labelId} type={q.type==='number'?'number':'text'} value={String(answers[q.id]??'')} onChange={e=>setAnswers({...answers,[q.id]:q.type==='number'?Number(e.target.value):e.target.value})}/>}</div>
+      })}
+      <div className="public-actions">
+        {error&&<Notice text={error}/>}<button type="button" className="primary wide submit-response" onClick={()=>void submit()} disabled={loading}>{loading?<LoaderCircle className="spin"/>:<Send/>} 응답 제출하기</button>
+        <small>제출된 응답은 수정하거나 삭제할 수 없습니다.</small>
+      </div>
+    </div>
+  </main>
 }
 
-function Results({title,loading,responses,summaries,topics,message,onRefresh}:{title:string;loading:boolean;responses:StoredFormResponse[];summaries:QuestionSummary[];topics:ResponseTopic[];message:string;onRefresh:()=>void}) { return <section><Title step="4" title={`${title} 결과`} text="응답자가 제출한 Firestore 데이터로 자동 계산한 결과입니다."/><div className="row result-head"><div className="stat"><UserRound/><span>전체 응답</span><b>{responses.length}<small>명</small></b></div><button onClick={onRefresh} disabled={loading}>{loading?<LoaderCircle className="spin"/>:<RefreshCcw/>} 새로고침</button></div>{message&&<Notice text={message}/>} {!responses.length&&!loading?<div className="empty card">아직 제출된 응답이 없습니다. 공개 링크를 응답자에게 공유해 주세요.</div>:<div className="results">{summaries.map(summary=><article className="card result" key={summary.questionId}><div className="row"><div><span className="badge">{typeLabels[summary.type]}</span><h2>{summary.label}</h2></div>{summary.average!==undefined&&<strong>{summary.average.toFixed(1)}<small> 평균</small></strong>}</div>{summary.distribution&&<div className="bars">{summary.distribution.map(item=><div key={item.label}><span>{item.label}</span><i><b style={{width:`${summary.responseCount?item.count/summary.responseCount*100:0}%`}}/></i><strong>{item.count}</strong></div>)}</div>}{summary.texts&&<details><summary>원문 근거 {summary.texts.length}개 보기</summary>{summary.texts.map((text,i)=><p key={i}>{text}</p>)}</details>}</article>)}</div>}{topics.length>0&&<div className="ai-topics"><h2><Sparkles/> AI 자유응답 요약</h2><p className="human-check">아래 요약은 AI 결과입니다. 담당자가 근거 원문과 함께 확인해 주세요.</p>{topics.map(topic=><article className="card" key={topic.id}><span className="badge">{topic.category}</span><h3>{topic.title}</h3><p>{topic.summary}</p><b>보고서 후보 문장</b><p>{topic.reportSentence}</p></article>)}</div>}</section> }
+function Results({title,loading,responses,summaries,topics,message,onRefresh,onExport}:{title:string;loading:boolean;responses:StoredFormResponse[];summaries:QuestionSummary[];topics:ResponseTopic[];message:string;onRefresh:()=>void;onExport:()=>void}) {
+  return <section>
+    <Title step="4" title={`${title} 결과`} text="응답 결과를 질문별 통계와 원본 데이터로 확인할 수 있습니다."/>
+    <div className="row result-head">
+      <div className="stat"><UserRound/><span>전체 응답</span><b>{responses.length}<small>명</small></b></div>
+      <div className="result-actions"><button type="button" onClick={onRefresh} disabled={loading}>{loading?<LoaderCircle className="spin"/>:<RefreshCcw/>} 새로고침</button><button type="button" className="primary" onClick={onExport} disabled={!responses.length}><Download/> Excel 저장</button></div>
+    </div>
+    {message&&<Notice text={message}/>} {!responses.length&&!loading?<div className="empty card">아직 제출된 응답이 없습니다. 공개 링크를 응답자에게 공유해 주세요.</div>:<div className="results">{summaries.map(summary=><article className="card result" key={summary.questionId}><div className="row"><div><span className="badge">{typeLabels[summary.type]}</span><h2>{summary.label}</h2><small className="response-total">유효 응답 {summary.responseCount}개</small></div>{summary.average!==undefined&&<strong>{summary.average.toFixed(1)}<small> 평균</small></strong>}</div>{summary.distribution&&<div className="bars" aria-label={`${summary.label} 응답 분포`}>{summary.distribution.map(item=>{const percentage=summary.responseCount?item.count/summary.responseCount*100:0;return <div key={item.label}><span>{item.label}</span><i role="img" aria-label={`${item.label} ${item.count}명, ${percentage.toFixed(0)}퍼센트`}><b style={{width:`${percentage}%`}}/></i><strong>{item.count}<small>{percentage.toFixed(0)}%</small></strong></div>})}</div>}{summary.texts&&<details><summary>원문 응답 {summary.texts.length}개 보기</summary>{summary.texts.map((text,i)=><p key={i}>{text}</p>)}</details>}</article>)}</div>}
+    {topics.length>0&&<div className="ai-topics"><h2><Sparkles/> AI 자유응답 요약</h2><p className="human-check">아래 요약은 AI 결과입니다. 담당자가 근거 원문과 함께 확인해 주세요.</p>{topics.map(topic=><article className="card" key={topic.id}><span className="badge">{topic.category}</span><h3>{topic.title}</h3><p>{topic.summary}</p><b>보고서 후보 문장</b><p>{topic.reportSentence}</p></article>)}</div>}
+  </section>
+}

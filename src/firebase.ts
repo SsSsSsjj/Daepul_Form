@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app'
 import { getAnalytics, isSupported } from 'firebase/analytics'
 import { ReCaptchaEnterpriseProvider, initializeAppCheck } from 'firebase/app-check'
-import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, type User } from 'firebase/auth'
+import { browserLocalPersistence, GoogleAuthProvider, getAuth, onAuthStateChanged, setPersistence, signInWithPopup, signInWithRedirect, signOut, type User } from 'firebase/auth'
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
 import { Timestamp, collection, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore'
 import type { FormQuestion, FormType, GeneratedForm, ProgramInfo, ResponseTopic, ResultStats, StoredFormResponse } from './types'
@@ -46,6 +46,8 @@ if (firebaseApp && firebaseConfig.measurementId) void isSupported().then((ok) =>
 
 export async function signInWithGoogle() {
   if (!auth) throw new Error('Firebase가 설정되지 않았습니다.')
+  // Keep the creator signed in across refreshes and redirect-based login fallbacks.
+  await setPersistence(auth, browserLocalPersistence).catch(() => undefined)
   try {
     return (await signInWithPopup(auth, googleProvider)).user
   } catch (error) {
