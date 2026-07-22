@@ -11,6 +11,14 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid == request.auth.uid;
     }
 
+    match /oauthStates/{stateId} {
+      allow read, write: if false;
+    }
+
+    match /oauthExchanges/{exchangeId} {
+      allow read, write: if false;
+    }
+
     match /forms/{formId} {
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
       allow read: if signedIn() && (resource.data.published == true || resource.data.ownerUid == request.auth.uid);

@@ -1,7 +1,10 @@
 import { initializeApp } from 'firebase/app'
 import { getAnalytics, isSupported } from 'firebase/analytics'
 import { ReCaptchaEnterpriseProvider, initializeAppCheck } from 'firebase/app-check'
-import { browserLocalPersistence, GoogleAuthProvider, getAuth, onAuthStateChanged, setPersistence, signInWithPopup, signInWithRedirect, signOut, type User } from 'firebase/auth'
+import {
+  browserLocalPersistence, GoogleAuthProvider, getAuth, onAuthStateChanged, setPersistence,
+  signInWithCustomToken, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, signOut, type User,
+} from 'firebase/auth'
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
 import { Timestamp, collection, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore'
 import type { FormQuestion, FormType, GeneratedForm, ProgramInfo, ResponseTopic, ResultStats, StoredFormResponse } from './types'
@@ -42,6 +45,13 @@ export const db = firebaseApp ? getFirestore(firebaseApp) : null
 const googleProvider = new GoogleAuthProvider()
 googleProvider.setCustomParameters({ prompt: 'select_account' })
 
+export type LoginProvider = 'google' | 'kakao' | 'naver' | 'email'
+type SocialLoginProvider = Exclude<LoginProvider, 'google' | 'email'>
+
+const loginProviderLabels: Record<LoginProvider | 'existing', string> = {
+  google: 'Google', kakao: '카카오', naver: '네이버', email: '이메일', existing: '기존 로그인 방식',
+}
+
 if (firebaseApp && firebaseConfig.measurementId) void isSupported().then((ok) => { if (ok) getAnalytics(firebaseApp) })
 
 export async function signInWithGoogle() {
@@ -58,6 +68,91 @@ export async function signInWithGoogle() {
     }
     throw error
   }
+}
+
+export async function signInWithEmail(email: string, password: string) {
+  if (!auth) throw new Error('Firebase가 설정되지 않았습니다.')
+  await setPersistence(auth, browserLocalPersistence).catch(() => undefined)
+  return (await signInWithEmailAndPassword(auth, email.trim(), password)).user
+}
+
+function socialAuthParams() {
+  return new URLSearchParams(location.search)
+}
+
+export function hasSocialLoginCallback() {
+  const params = socialAuthParams()
+  return params.has('auth_code') || params.has('auth_error')
+}
+
+function clearSocialLoginParams() {
+  const url = new URL(location.href)
+  for (const key of ['auth_code', 'auth_error', 'auth_provider', 'existing_provider']) url.searchParams.delete(key)
+  history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+}
+
+function socialLoginErrorMessage(code: string, provider: string, existingProvider: string) {
+  const providerLabel = loginProviderLabels[provider as LoginProvider] ?? '소셜'
+  const existingLabel = loginProviderLabels[existingProvider as LoginProvider | 'existing'] ?? '기존 로그인 방식'
+  const messages: Record<string, string> = {
+    account_exists: `같은 이메일로 가입된 계정이 있습니다. ${existingLabel}로 로그인해 주세요.`,
+    email_required: `${providerLabel}에서 이메일 제공에 동의해야 로그인할 수 있습니다.`,
+    invalid_exchange_code: '로그인 확인 코드가 만료되었습니다. 다시 로그인해 주세요.',
+    invalid_state: '로그인 요청이 만료되었거나 브라우저 세션이 일치하지 않습니다. 다시 시도해 주세요.',
+    oauth_cancelled: `${providerLabel} 로그인이 취소되었습니다.`,
+    provider_unavailable: `${providerLabel} 로그인 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.`,
+  }
+  return messages[code] ?? '소셜 로그인을 완료하지 못했습니다. 다시 시도해 주세요.'
+}
+
+export async function completeSocialLoginCallback() {
+  const params = socialAuthParams()
+  const code = params.get('auth_code') ?? ''
+  const error = params.get('auth_error') ?? ''
+  const provider = params.get('auth_provider') ?? ''
+  const existingProvider = params.get('existing_provider') ?? ''
+  if (!code && !error) return ''
+  clearSocialLoginParams()
+
+  try {
+    if (error) return socialLoginErrorMessage(error, provider, existingProvider)
+    if (!auth) return 'Firebase가 설정되지 않았습니다.'
+    const response = await fetch('/api/auth/exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    })
+    const body = await response.json() as { customToken?: string; error?: string }
+    if (!response.ok || !body.customToken) {
+      return socialLoginErrorMessage(body.error ?? 'invalid_exchange_code', provider, existingProvider)
+    }
+    await setPersistence(auth, browserLocalPersistence).catch(() => undefined)
+    await signInWithCustomToken(auth, body.customToken)
+    return ''
+  } catch {
+    return '소셜 로그인을 완료하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.'
+  }
+}
+
+export function startSocialLogin(provider: SocialLoginProvider) {
+  const current = new URL(location.href)
+  for (const key of ['auth_code', 'auth_error', 'auth_provider', 'existing_provider']) current.searchParams.delete(key)
+  const returnTo = `${current.pathname}${current.search}${current.hash}`
+  location.assign(`/api/auth/${provider}/start?returnTo=${encodeURIComponent(returnTo)}`)
+}
+
+export function loginFailureMessage(error: unknown, provider: LoginProvider) {
+  const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+  if (provider === 'email') {
+    if (code === 'auth/invalid-email') return '올바른 이메일 주소를 입력해 주세요.'
+    if (code === 'auth/user-disabled') return '사용이 중지된 계정입니다. 관리자에게 문의해 주세요.'
+    if (code === 'auth/too-many-requests') return '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.'
+    return '이메일 또는 비밀번호가 올바르지 않습니다.'
+  }
+  if (code === 'auth/account-exists-with-different-credential') {
+    return '같은 이메일로 가입된 계정이 있습니다. 기존 카카오·네이버 또는 이메일 로그인을 이용해 주세요.'
+  }
+  return 'Google 로그인에 실패했습니다. 팝업 허용 및 Firebase 인증 설정을 확인해 주세요.'
 }
 
 export async function logout() {

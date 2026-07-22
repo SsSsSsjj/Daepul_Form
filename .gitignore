@@ -4,3 +4,6 @@ dist
 *.local
 firebase-debug.log*
 .firebase/
+functions/lib/
+functions/.env*
+!functions/.env.example
