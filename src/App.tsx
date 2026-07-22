@@ -3,7 +3,7 @@ import { CheckCircle2, ChevronDown, Copy, Download, FileText, Flower2, Leaf, Lay
 import QRCode from 'qrcode'
 import writeXlsxFile, { type SheetData } from 'write-excel-file/browser'
 import {
-  completeEmailSignIn, deleteFormRecord, discardEmailSignInLink, firebaseConfigured, generateFormFromDocuments,
+  aiFailureMessage, completeEmailSignIn, deleteFormRecord, discardEmailSignInLink, firebaseConfigured, generateFormFromDocuments,
   getFormResponses, getOwnedForms, getPendingEmailAddress, getPublishedForm, hasEmailSignInLink,
   hasSubmittedResponse, loginFailureMessage, logout, observeAuthState, publishFormRecord, requestEmailSignInLink,
   signInWithGoogle,
@@ -213,9 +213,7 @@ export default function App() {
       setProgram(generated.program); setQuestions(generated.questions); setFormType(generated.formType); setReviewNotes(generated.reviewNotes); setPage('edit')
     } catch (error) {
       console.error(error)
-      setAnalysisError(error instanceof Error && error.message.startsWith('HWP 파일')
-        ? error.message
-        : 'AI 문서 분석을 실행하지 못했습니다. Firebase Console에서 AI Logic(Gemini Developer API)을 활성화한 뒤 다시 시도해 주세요.')
+      setAnalysisError(aiFailureMessage(error))
     } finally { setAnalysisLoading(false) }
   }
   const publish = async () => {
