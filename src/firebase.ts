@@ -6,7 +6,7 @@ import {
   sendSignInLinkToEmail, setPersistence, signInWithEmailLink, signInWithPopup, signInWithRedirect, signOut, type User,
 } from 'firebase/auth'
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
-import { Timestamp, collection, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore'
+import { Timestamp, collection, doc, getDoc, getDocs, getFirestore, limit, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore'
 import type { FormQuestion, FormType, GeneratedForm, ProgramInfo, ResponseTopic, ResultStats, StoredFormResponse } from './types'
 import { extractHwpText, isHwpFile } from './hwp'
 
@@ -202,11 +202,26 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
   formId: string; owner: User; program: ProgramInfo; questions: FormQuestion[]; surveyEndDate: string; formType?: FormType; theme?: string
 }) {
   if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
-  await setDoc(doc(db, 'forms', formId), {
+  let targetFormId = formId
+  const existingForm = await getDoc(doc(db, 'forms', formId))
+  if (existingForm.exists()) {
+    const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options }) => ({
+      id, label, type, required, options: options ?? [],
+    }))
+    const previousQuestions = (existingForm.data().questions ?? []) as FormQuestion[]
+    const questionsChanged = JSON.stringify(normalizeQuestions(previousQuestions)) !== JSON.stringify(normalizeQuestions(questions))
+    if (questionsChanged) {
+      const existingResponses = await getDocs(query(collection(db, 'forms', formId, 'responses'), limit(1)))
+      if (!existingResponses.empty) targetFormId = `form-${crypto.randomUUID().slice(0, 8)}`
+    }
+  }
+
+  await setDoc(doc(db, 'forms', targetFormId), {
     ownerUid: owner.uid, ownerEmail: owner.email, program, questions, formType, theme, published: true,
     surveyEndAt: Timestamp.fromDate(new Date(`${surveyEndDate}T23:59:59+09:00`)),
     expireAt: expirationFromSurveyEnd(surveyEndDate), updatedAt: serverTimestamp(),
   }, { merge: true })
+  return targetFormId
 }
 
 export async function hasSubmittedResponse(formId: string, userUid: string) {
@@ -256,13 +271,13 @@ export async function getFormResponses(formId: string): Promise<StoredFormRespon
   return snapshot.docs.map((item) => ({ id: item.id, answers: item.data().answers ?? {} }))
 }
 
-export async function submitResponseOnce({ formId, user, answers, surveyEndDate }: {
-  formId: string; user: User; answers: Record<number, string | boolean | number>; surveyEndDate: string
+export async function submitResponseOnce({ formId, user, answers, surveyEndDate, questions }: {
+  formId: string; user: User; answers: Record<number, string | boolean | number>; surveyEndDate: string; questions: FormQuestion[]
 }) {
   if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
   const responseRef = doc(db, 'forms', formId, 'responses', user.uid)
   if ((await getDoc(responseRef)).exists()) throw new Error('already-submitted')
-  await setDoc(responseRef, { formId, userUid: user.uid, answers, submittedAt: serverTimestamp(), expireAt: expirationFromSurveyEnd(surveyEndDate), immutable: true })
+  await setDoc(responseRef, { formId, userUid: user.uid, answers, questions, submittedAt: serverTimestamp(), expireAt: expirationFromSurveyEnd(surveyEndDate), immutable: true })
 }
 
 const formSchema = Schema.object({ properties: {
