@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
-import { CheckCircle2, ChevronDown, Copy, Download, FileText, Flower2, Leaf, LayoutDashboard, LoaderCircle, LogIn, LogOut, Palette, Plus, QrCode, RefreshCcw, Send, Snowflake, Sparkles, Sun, Trash2, Upload, UserRound, WandSparkles, Waves } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Copy, Download, ExternalLink, FileText, Flower2, Leaf, LayoutDashboard, LoaderCircle, LogIn, LogOut, Palette, Plus, QrCode, RefreshCcw, Send, Snowflake, Sparkles, Sun, Trash2, Upload, UserRound, WandSparkles, Waves } from 'lucide-react'
 import QRCode from 'qrcode'
 import writeXlsxFile, { type SheetData } from 'write-excel-file/browser'
 import {
@@ -131,6 +131,9 @@ export default function App() {
   const [topics, setTopics] = useState<ResponseTopic[]>([])
   const [ownedForms, setOwnedForms] = useState<OwnedForm[]>([])
   const [deletingFormId, setDeletingFormId] = useState('')
+  const [shareFormId, setShareFormId] = useState('')
+  const [manageQr, setManageQr] = useState('')
+  const [copiedFormId, setCopiedFormId] = useState('')
   const [publicFormLoaded, setPublicFormLoaded] = useState(false)
   const [qr, setQr] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -278,6 +281,22 @@ export default function App() {
     } catch { setMessage('폼을 삭제하지 못했습니다. 제작자 계정인지 확인한 뒤 다시 시도해 주세요.') }
     finally { setDeletingFormId('') }
   }
+  const toggleManageShare = async (form: OwnedForm) => {
+    if (shareFormId === form.id) {
+      setShareFormId(''); setManageQr(''); setCopiedFormId('')
+      return
+    }
+    const publicLink = `${location.origin}/?form=${form.id}`
+    setShareFormId(form.id); setManageQr(''); setCopiedFormId(''); setMessage('')
+    try { setManageQr(await QRCode.toDataURL(publicLink, { width: 280, margin: 2 })) }
+    catch { setMessage('QR 코드를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.') }
+  }
+  const copyManageLink = async (form: OwnedForm) => {
+    try {
+      await navigator.clipboard.writeText(`${location.origin}/?form=${form.id}`)
+      setCopiedFormId(form.id)
+    } catch { setMessage('링크를 복사하지 못했습니다. 주소를 직접 선택해 복사해 주세요.') }
+  }
 
   if (!authReady || emailLinkMode === 'checking') return <div className="center"><LoaderCircle className="spin" /></div>
   if (emailLinkMode === 'needs-email' || !user) return <Login loadingProvider={loginProvider} error={authError} initialEmail={getPendingEmailAddress()} completingEmailLink={emailLinkMode === 'needs-email'} onLogin={login} onStartNewEmailLink={startNewEmailLink} />
@@ -290,7 +309,7 @@ export default function App() {
       {page === 'edit' && <section><Title step="2" title="AI가 만든 폼을 확인하세요" text="문서에서 확실하지 않은 내용은 검토 항목으로 표시합니다."/>{reviewNotes.length > 0 && <div className="notice warn"><b>사람이 확인할 항목</b>{reviewNotes.map((note) => <span key={note}>• {note}</span>)}</div>}<div className="grid edit"><div><div className="card form-fields"><h2>폼 기본 정보</h2><label>폼 제목<input value={program.programName} onChange={(e) => setProgram({...program, programName:e.target.value})}/></label><label>설명<textarea value={program.description} onChange={(e) => setProgram({...program, description:e.target.value})}/></label><div className="grid two"><label>대상<input value={program.target} onChange={(e) => setProgram({...program, target:e.target.value})}/></label><label>기간<input value={program.period} onChange={(e) => setProgram({...program, period:e.target.value})}/></label></div></div><div className="card"><div className="row"><h2>질문 {questions.length}개</h2><button onClick={() => setQuestions([...questions,{id:Date.now(),label:'새 질문',type:'short_text',required:false}])}><Plus size={16}/> 질문 추가</button></div>{questions.map((q) => <div className="question" key={q.id}><input value={q.label} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,label:e.target.value}:item))}/><select value={q.type} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,type:e.target.value as FormQuestion['type']}:item))}>{Object.entries(typeLabels).map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select><label className="check"><input type="checkbox" checked={q.required} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,required:e.target.checked}:item))}/>필수</label><button onClick={() => setQuestions(questions.filter((item) => item.id!==q.id))}><Trash2 size={16}/></button></div>)}</div></div><aside className="card preview"><h2>미리보기</h2><FormBody program={program} questions={questions} theme={theme}/></aside></div><div className="actions between"><button onClick={() => setPage('create')}>자료 다시 선택</button><button className="primary" onClick={() => setPage('publish')}>디자인·배포 설정</button></div></section>}
       {page === 'publish' && <section><Title step="3" title="디자인을 고르고 실제로 배포하세요" text="배포하면 로그인한 응답자가 사용할 수 있는 공개 링크와 QR이 생성됩니다."/><div className="grid two"><div className="card"><h2><Palette size={20}/> 폼 디자인</h2><div className="themes" role="group" aria-label="폼 디자인 선택">{selectableThemes.map((item) => <button type="button" key={item.id} className={`theme-option ${item.id} ${theme===item.id?'selected':''}`} aria-pressed={theme===item.id} onClick={() => setTheme(item.id)}><span className="theme-swatch"><ThemeIcon theme={item.id}/></span><span className="theme-copy"><b>{item.label}</b><small>{item.description}</small></span></button>)}</div><FormBody program={program} questions={questions} theme={theme}/></div><div className="card publish-card"><h2>공개 설정</h2><label>설문 종료일<input type="date" value={endDate} onChange={(e)=>setEndDate(e.target.value)}/></label><button className="primary wide" onClick={() => void publish()} disabled={publishLoading}>{publishLoading?<LoaderCircle className="spin"/>:<Send/>} 실제 폼 배포하기</button>{message && <Notice text={message}/>} {published && <div className="share"><CheckCircle2/><h3>배포 완료</h3>{qr?<img src={qr} alt="공개 폼 QR 코드"/>:<QrCode/>}<div className="copy"><input readOnly value={shareLink}/><button onClick={() => void navigator.clipboard.writeText(shareLink)}><Copy/></button></div><a className="primary link" href={shareLink} target="_blank">응답 화면 열기</a></div>}</div></div><div className="actions between"><button onClick={() => setPage('edit')}>폼 수정</button><button className="primary" onClick={() => void loadResults()} disabled={resultLoading}>응답 결과 보기</button></div></section>}
       {page === 'results' && <Results title={program.programName} loading={resultLoading} responses={responses} summaries={summaries} topics={topics} message={message} onRefresh={() => void loadResults()} onExport={() => void exportResponsesToExcel(program.programName, questions, responses, summaries)}/>}
-      {page === 'manage' && <section><Title step="" title="내가 만든 폼" text="폼별 공개 상태와 실제 신청 인원을 확인할 수 있습니다."/>{message&&<Notice text={message}/>} {resultLoading?<div className="center"><LoaderCircle className="spin"/></div>:<div className="manage-list">{ownedForms.length?ownedForms.map((form)=><article className="card" key={form.id}><div><span className="badge">{form.published?'공개 중':'초안'}</span><h2>{form.title}</h2><small>{form.id}</small></div><strong>{form.responseCount}<small>명 응답</small></strong><button className="primary" onClick={() => void loadResults(form.id)}>결과 보기</button><button className="danger" disabled={deletingFormId===form.id} onClick={() => void deleteOwnedForm(form)}>{deletingFormId===form.id?<LoaderCircle className="spin" size={16}/>:<Trash2 size={16}/>} 삭제</button></article>):<div className="empty card">아직 배포한 폼이 없습니다.<button className="primary" onClick={startNewForm}>첫 폼 만들기</button></div>}</div>}</section>}
+      {page === 'manage' && <section><Title step="" title="내가 만든 폼" text="폼별 공개 상태와 실제 신청 인원을 확인할 수 있습니다."/>{message&&<Notice text={message}/>} {resultLoading?<div className="center"><LoaderCircle className="spin"/></div>:<div className="manage-list">{ownedForms.length?ownedForms.map((form)=>{const publicLink=`${location.origin}/?form=${form.id}`;const shareOpen=shareFormId===form.id;return <article className="card" key={form.id}><div><span className="badge">{form.published?'공개 중':'초안'}</span><h2>{form.title}</h2><small>{form.id}</small></div><strong>{form.responseCount}<small>명 응답</small></strong><div className="manage-actions"><button className="primary" onClick={() => void loadResults(form.id)}>결과 보기</button><button type="button" aria-expanded={shareOpen} aria-controls={`share-${form.id}`} onClick={() => void toggleManageShare(form)}><QrCode size={16}/> 공유</button><button className="danger" disabled={deletingFormId===form.id} onClick={() => void deleteOwnedForm(form)}>{deletingFormId===form.id?<LoaderCircle className="spin" size={16}/>:<Trash2 size={16}/>} 삭제</button></div>{shareOpen&&<div className="manage-share-panel" id={`share-${form.id}`}><div className="manage-share-qr">{manageQr?<img src={manageQr} alt={`${form.title} 공개 링크 QR 코드`}/>:<LoaderCircle className="spin"/>}</div><div className="manage-share-info"><span>공개 링크</span><div className="copy"><input readOnly value={publicLink} aria-label={`${form.title} 공개 링크`}/><button type="button" onClick={() => void copyManageLink(form)} aria-label="공개 링크 복사">{copiedFormId===form.id?'복사됨':<Copy size={17}/>}</button></div><div className="manage-share-links"><a className="primary link" href={publicLink} target="_blank" rel="noreferrer"><ExternalLink size={16}/> 응답 화면 열기</a>{manageQr&&<a className="link" href={manageQr} download={`${form.title.replace(/[\\/:*?"<>|]/g,'_')}_QR.png`}><Download size={16}/> QR 저장</a>}</div></div></div>}</article>}):<div className="empty card">아직 배포한 폼이 없습니다.<button className="primary" onClick={startNewForm}>첫 폼 만들기</button></div>}</div>}</section>}
     </main>
   </div>
 }

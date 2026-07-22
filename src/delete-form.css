@@ -6,7 +6,74 @@
 }
 
 .manage-list article {
-  grid-template-columns: 1fr 110px 110px 88px;
+  grid-template-columns: minmax(0, 1fr) 110px auto;
+  gap: 12px;
+}
+
+.manage-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.manage-actions button {
+  white-space: nowrap;
+}
+
+.manage-share-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+  margin-top: 8px;
+  padding: 22px;
+  border: 1px solid #dce7e2;
+  border-radius: 14px;
+  background: #f7faf8;
+}
+
+.manage-share-qr {
+  width: 180px;
+  height: 180px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #dce5e1;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.manage-share-qr img {
+  width: 100%;
+  height: 100%;
+}
+
+.manage-share-info > span {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  color: #60716c;
+}
+
+.manage-share-info .copy {
+  margin: 8px 0 14px;
+}
+
+.manage-share-info .copy input {
+  min-width: 0;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #cdd8d4;
+  background: #fff;
+}
+
+.manage-share-info .copy button {
+  min-width: 72px;
+}
+
+.manage-share-links {
+  display: flex;
   gap: 8px;
 }
 
@@ -15,8 +82,28 @@
     grid-template-columns: 1fr auto;
   }
 
-  .manage-list article .danger,
-  .manage-list article .primary {
-    grid-column: auto;
+  .manage-actions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .manage-share-panel {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 18px;
+  }
+
+  .manage-share-info {
+    width: 100%;
+  }
+
+  .manage-share-links {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .manage-share-links .link {
+    width: 100%;
   }
 }
