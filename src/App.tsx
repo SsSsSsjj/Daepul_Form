@@ -3,9 +3,10 @@ import { CheckCircle2, ChevronDown, Copy, Download, FileText, LayoutDashboard, L
 import QRCode from 'qrcode'
 import writeXlsxFile, { type SheetData } from 'write-excel-file/browser'
 import {
-  completeSocialLoginCallback, deleteFormRecord, firebaseConfigured, generateFormFromDocuments, getFormResponses,
-  getOwnedForms, getPublishedForm, hasSocialLoginCallback, hasSubmittedResponse, loginFailureMessage, logout,
-  observeAuthState, publishFormRecord, signInWithEmail, signInWithGoogle, startSocialLogin,
+  completeEmailSignIn, deleteFormRecord, discardEmailSignInLink, firebaseConfigured, generateFormFromDocuments,
+  getFormResponses, getOwnedForms, getPendingEmailAddress, getPublishedForm, hasEmailSignInLink,
+  hasSubmittedResponse, loginFailureMessage, logout, observeAuthState, publishFormRecord, requestEmailSignInLink,
+  signInWithGoogle,
   submitResponseOnce, summarizeResponses, type FirebaseUser, type LoginProvider,
 } from './firebase'
 import type { FormQuestion, FormType, ProgramInfo, QuestionSummary, ResponseTopic, StoredFormResponse } from './types'
@@ -13,6 +14,7 @@ import type { FormQuestion, FormType, ProgramInfo, QuestionSummary, ResponseTopi
 type Page = 'create' | 'edit' | 'publish' | 'results' | 'manage'
 type Theme = 'green' | 'blue' | 'coral'
 type OwnedForm = { id: string; title: string; published: boolean; responseCount: number }
+type EmailLinkMode = 'none' | 'checking' | 'needs-email'
 
 const emptyProgram: ProgramInfo = { programName: '', description: '', target: '', period: '', schedule: '', capacity: '', requirements: '', privacyConsent: '' }
 const typeLabels = { short_text: '단답형', long_text: '장문형', select: '객관식', checkbox: '체크박스', consent: '개인정보 동의', rating: '1~5점 평점', number: '숫자' }
@@ -89,7 +91,7 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false)
   const [authError, setAuthError] = useState('')
   const [loginProvider, setLoginProvider] = useState<LoginProvider | null>(null)
-  const [authCallbackPending, setAuthCallbackPending] = useState(hasSocialLoginCallback)
+  const [emailLinkMode, setEmailLinkMode] = useState<EmailLinkMode>(() => hasEmailSignInLink() ? 'checking' : 'none')
   const [page, setPage] = useState<Page>('create')
   const [menuOpen, setMenuOpen] = useState(false)
   const [files, setFiles] = useState<File[]>([])
@@ -115,6 +117,7 @@ export default function App() {
   const [publicFormLoaded, setPublicFormLoaded] = useState(false)
   const [qr, setQr] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const emailLinkHandled = useRef(false)
 
   const shareLink = `${location.origin}/?form=${formId}`
   const summaries = useMemo(() => analyzeStoredResponses(questions, responses), [questions, responses])
@@ -129,12 +132,23 @@ export default function App() {
     }
   }, [memo, program, questions, formType, theme, endDate, requestedFormId])
   useEffect(() => {
-    if (!authCallbackPending) return
-    void completeSocialLoginCallback().then((error) => {
-      setAuthError(error)
-      setAuthCallbackPending(false)
-    })
-  }, [authCallbackPending])
+    if (emailLinkMode !== 'checking' || emailLinkHandled.current) return
+    emailLinkHandled.current = true
+    const savedEmail = getPendingEmailAddress()
+    if (!savedEmail) {
+      setEmailLinkMode('needs-email')
+      return
+    }
+
+    setLoginProvider('email')
+    void completeEmailSignIn(savedEmail).then((signedInUser) => {
+      setUser(signedInUser)
+      setEmailLinkMode('none')
+    }).catch((error) => {
+      setAuthError(loginFailureMessage(error, 'email'))
+      setEmailLinkMode('needs-email')
+    }).finally(() => setLoginProvider(null))
+  }, [emailLinkMode])
   useEffect(() => {
     if (!user || !requestedFormId || publicFormLoaded) return
     void getPublishedForm(requestedFormId).then((form) => {
@@ -143,20 +157,27 @@ export default function App() {
   }, [user, requestedFormId, publicFormLoaded])
   useEffect(() => { if (published) void QRCode.toDataURL(shareLink, { width: 240, margin: 2 }).then(setQr) }, [published, shareLink])
 
-  const login = async (provider: LoginProvider, email = '', password = '') => {
+  const login = async (provider: LoginProvider, email = '') => {
     setLoginProvider(provider); setAuthError('')
-    if (provider === 'kakao' || provider === 'naver') {
-      startSocialLogin(provider)
-      return
-    }
     try {
       if (provider === 'google') await signInWithGoogle()
-      else await signInWithEmail(email, password)
+      else if (emailLinkMode === 'needs-email') {
+        const signedInUser = await completeEmailSignIn(email)
+        setUser(signedInUser)
+        setEmailLinkMode('none')
+      } else await requestEmailSignInLink(email)
+      return true
     } catch (error) {
       setAuthError(loginFailureMessage(error, provider))
+      return false
     } finally {
       setLoginProvider(null)
     }
+  }
+  const startNewEmailLink = () => {
+    discardEmailSignInLink()
+    setEmailLinkMode('none')
+    setAuthError('')
   }
   const doLogout = async () => { await logout(); setUser(null); setMenuOpen(false); setPage('create') }
   const addFiles = (incoming: File[]) => {
@@ -216,8 +237,8 @@ export default function App() {
     finally { setDeletingFormId('') }
   }
 
-  if (!authReady || authCallbackPending) return <div className="center"><LoaderCircle className="spin" /></div>
-  if (!user) return <Login loadingProvider={loginProvider} error={authError} onLogin={login} />
+  if (!authReady || emailLinkMode === 'checking') return <div className="center"><LoaderCircle className="spin" /></div>
+  if (emailLinkMode === 'needs-email' || !user) return <Login loadingProvider={loginProvider} error={authError} initialEmail={getPendingEmailAddress()} completingEmailLink={emailLinkMode === 'needs-email'} onLogin={login} onStartNewEmailLink={startNewEmailLink} />
   if (requestedFormId && publicFormLoaded) return <PublicForm user={user} formId={formId} program={program} questions={questions} theme={theme} endDate={endDate} onLogout={doLogout} />
 
   return <div className={`app theme-${theme}`}>
@@ -232,9 +253,61 @@ export default function App() {
   </div>
 }
 
-function Login({loadingProvider,error,onLogin}:{loadingProvider:LoginProvider|null;error:string;onLogin:(provider:LoginProvider,email?:string,password?:string)=>void}) {
-  const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const loading=loadingProvider!==null
-  return <main className="login"><div className="login-card"><div className="logo">대</div><span className="eyebrow">DAEPUL FORM</span><h1>자료 한 번 올리면<br/>폼부터 결과까지</h1><p>첨부문서를 AI가 읽어 알맞은 폼을 만들고, 실제 응답을 자동으로 집계합니다.</p><div className="login-options"><button className="social-login google" disabled={loading||!firebaseConfigured} onClick={()=>void onLogin('google')}>{loadingProvider==='google'?<LoaderCircle className="spin"/>:<span className="login-mark">G</span>} Google로 로그인</button><button className="social-login kakao" disabled={loading||!firebaseConfigured} onClick={()=>void onLogin('kakao')}>{loadingProvider==='kakao'?<LoaderCircle className="spin"/>:<span className="login-mark">K</span>} 카카오로 로그인</button><button className="social-login naver" disabled={loading||!firebaseConfigured} onClick={()=>void onLogin('naver')}>{loadingProvider==='naver'?<LoaderCircle className="spin"/>:<span className="login-mark">N</span>} 네이버로 로그인</button></div><div className="login-divider"><span>또는 이메일</span></div><form className="email-login" onSubmit={(event)=>{event.preventDefault();void onLogin('email',email,password)}}><label>이메일<input type="email" autoComplete="email" value={email} onChange={(event)=>setEmail(event.target.value)} required/></label><label>비밀번호<input type="password" autoComplete="current-password" value={password} onChange={(event)=>setPassword(event.target.value)} required/></label><button className="email-login-button" disabled={loading||!firebaseConfigured}>{loadingProvider==='email'?<LoaderCircle className="spin"/>:<LogIn/>} 이메일로 로그인</button></form>{error&&<Notice text={error}/>}<small>폼 제작자와 응답자 모두 로그인이 필요합니다.</small></div></main>
+function Login({loadingProvider,error,initialEmail,completingEmailLink,onLogin,onStartNewEmailLink}:{
+  loadingProvider: LoginProvider | null
+  error: string
+  initialEmail: string
+  completingEmailLink: boolean
+  onLogin: (provider: LoginProvider, email?: string) => Promise<boolean>
+  onStartNewEmailLink: () => void
+}) {
+  const [email, setEmail] = useState(initialEmail)
+  const [sentEmail, setSentEmail] = useState('')
+  const [cooldown, setCooldown] = useState(0)
+  const loading = loadingProvider !== null
+
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const timer = window.setInterval(() => setCooldown((seconds) => Math.max(0, seconds - 1)), 1000)
+    return () => window.clearInterval(timer)
+  }, [cooldown])
+
+  const submitEmail = async () => {
+    if (!completingEmailLink && cooldown > 0) return
+    const succeeded = await onLogin('email', email)
+    if (succeeded && !completingEmailLink) {
+      setSentEmail(email.trim())
+      setCooldown(60)
+    }
+  }
+
+  const emailButtonText = loadingProvider === 'email'
+    ? '처리 중...'
+    : completingEmailLink
+      ? '이메일 확인 후 로그인'
+      : cooldown > 0
+        ? `${cooldown}초 후 재전송`
+        : sentEmail
+          ? '로그인 링크 다시 받기'
+          : '로그인 링크 받기'
+
+  return <main className="login"><div className="login-card">
+    <div className="logo">대</div><span className="eyebrow">DAEPUL FORM</span>
+    <h1>자료 한 번 올리면<br/>폼부터 결과까지</h1>
+    <p>첨부문서를 AI가 읽어 알맞은 폼을 만들고, 실제 응답을 자동으로 집계합니다.</p>
+    {!completingEmailLink && <div className="login-options"><button className="social-login google" disabled={loading||!firebaseConfigured} onClick={()=>void onLogin('google')}>{loadingProvider==='google'?<LoaderCircle className="spin"/>:<span className="login-mark">G</span>} Google로 로그인</button></div>}
+    {!completingEmailLink && <div className="login-divider"><span>또는 이메일</span></div>}
+    <form className="email-login" onSubmit={(event)=>{event.preventDefault();void submitEmail()}}>
+      {completingEmailLink && <div className="email-link-heading"><b>로그인을 마무리해 주세요</b><span>보안을 위해 링크를 받은 이메일을 다시 입력해 주세요.</span></div>}
+      <label>{completingEmailLink ? '로그인 링크를 받은 이메일' : '이메일'}<input type="email" autoComplete="email" value={email} onChange={(event)=>setEmail(event.target.value)} disabled={loading} required/></label>
+      {!completingEmailLink && <span className="email-login-note">처음 이용해도 이메일 확인 후 바로 시작할 수 있습니다.</span>}
+      <button className="email-login-button" disabled={loading||!firebaseConfigured||(!completingEmailLink&&cooldown>0)}>{loadingProvider==='email'?<LoaderCircle className="spin"/>:completingEmailLink?<LogIn/>:<Send/>} {emailButtonText}</button>
+    </form>
+    {sentEmail && !error && <div className="email-link-sent"><b>로그인 링크를 보냈습니다.</b><span>{sentEmail}의 받은편지함을 확인해 주세요.</span></div>}
+    {error&&<Notice text={error}/>}
+    {completingEmailLink && <button className="email-link-reset" type="button" onClick={onStartNewEmailLink}>새 로그인 링크 받기</button>}
+    <small>폼 제작자와 응답자 모두 로그인이 필요합니다.</small>
+  </div></main>
 }
 function Title({step,title,text}:{step:string;title:string;text:string}) { return <div className="title"><span>{step&&`${step}단계`}</span><h1>{title}</h1><p>{text}</p></div> }
 function Notice({text}:{text:string}) { return <div className="notice">{text}</div> }
