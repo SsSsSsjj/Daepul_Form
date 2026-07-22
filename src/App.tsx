@@ -3,9 +3,10 @@ import { CheckCircle2, ChevronDown, Copy, Download, FileText, LayoutDashboard, L
 import QRCode from 'qrcode'
 import writeXlsxFile, { type SheetData } from 'write-excel-file/browser'
 import {
-  deleteFormRecord, firebaseConfigured, generateFormFromDocuments, getFormResponses, getOwnedForms, getPublishedForm,
-  hasSubmittedResponse, logout, observeAuthState, publishFormRecord, signInWithGoogle,
-  submitResponseOnce, summarizeResponses, type FirebaseUser,
+  completeSocialLoginCallback, deleteFormRecord, firebaseConfigured, generateFormFromDocuments, getFormResponses,
+  getOwnedForms, getPublishedForm, hasSocialLoginCallback, hasSubmittedResponse, loginFailureMessage, logout,
+  observeAuthState, publishFormRecord, signInWithEmail, signInWithGoogle, startSocialLogin,
+  submitResponseOnce, summarizeResponses, type FirebaseUser, type LoginProvider,
 } from './firebase'
 import type { FormQuestion, FormType, ProgramInfo, QuestionSummary, ResponseTopic, StoredFormResponse } from './types'
 
@@ -87,7 +88,8 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [authError, setAuthError] = useState('')
-  const [loginLoading, setLoginLoading] = useState(false)
+  const [loginProvider, setLoginProvider] = useState<LoginProvider | null>(null)
+  const [authCallbackPending, setAuthCallbackPending] = useState(hasSocialLoginCallback)
   const [page, setPage] = useState<Page>('create')
   const [menuOpen, setMenuOpen] = useState(false)
   const [files, setFiles] = useState<File[]>([])
@@ -127,6 +129,13 @@ export default function App() {
     }
   }, [memo, program, questions, formType, theme, endDate, requestedFormId])
   useEffect(() => {
+    if (!authCallbackPending) return
+    void completeSocialLoginCallback().then((error) => {
+      setAuthError(error)
+      setAuthCallbackPending(false)
+    })
+  }, [authCallbackPending])
+  useEffect(() => {
     if (!user || !requestedFormId || publicFormLoaded) return
     void getPublishedForm(requestedFormId).then((form) => {
       setProgram(form.program); setQuestions(form.questions); setFormType(form.formType); setTheme(form.theme as Theme); setEndDate(form.surveyEndDate); setFormId(requestedFormId); setPublicFormLoaded(true)
@@ -134,9 +143,20 @@ export default function App() {
   }, [user, requestedFormId, publicFormLoaded])
   useEffect(() => { if (published) void QRCode.toDataURL(shareLink, { width: 240, margin: 2 }).then(setQr) }, [published, shareLink])
 
-  const login = async () => {
-    setLoginLoading(true); setAuthError('')
-    try { await signInWithGoogle() } catch { setAuthError('Google 로그인에 실패했습니다. 팝업 허용 및 Firebase 인증 설정을 확인해 주세요.') } finally { setLoginLoading(false) }
+  const login = async (provider: LoginProvider, email = '', password = '') => {
+    setLoginProvider(provider); setAuthError('')
+    if (provider === 'kakao' || provider === 'naver') {
+      startSocialLogin(provider)
+      return
+    }
+    try {
+      if (provider === 'google') await signInWithGoogle()
+      else await signInWithEmail(email, password)
+    } catch (error) {
+      setAuthError(loginFailureMessage(error, provider))
+    } finally {
+      setLoginProvider(null)
+    }
   }
   const doLogout = async () => { await logout(); setUser(null); setMenuOpen(false); setPage('create') }
   const addFiles = (incoming: File[]) => {
@@ -196,8 +216,8 @@ export default function App() {
     finally { setDeletingFormId('') }
   }
 
-  if (!authReady) return <div className="center"><LoaderCircle className="spin" /></div>
-  if (!user) return <Login loading={loginLoading} error={authError} onLogin={login} />
+  if (!authReady || authCallbackPending) return <div className="center"><LoaderCircle className="spin" /></div>
+  if (!user) return <Login loadingProvider={loginProvider} error={authError} onLogin={login} />
   if (requestedFormId && publicFormLoaded) return <PublicForm user={user} formId={formId} program={program} questions={questions} theme={theme} endDate={endDate} onLogout={doLogout} />
 
   return <div className={`app theme-${theme}`}>
@@ -212,7 +232,10 @@ export default function App() {
   </div>
 }
 
-function Login({loading,error,onLogin}:{loading:boolean;error:string;onLogin:()=>void}) { return <main className="login"><div className="login-card"><div className="logo">대</div><span className="eyebrow">DAEPUL FORM</span><h1>자료 한 번 올리면<br/>폼부터 결과까지</h1><p>첨부문서를 AI가 읽어 알맞은 폼을 만들고, 실제 응답을 자동으로 집계합니다.</p><button className="google" disabled={loading||!firebaseConfigured} onClick={onLogin}>{loading?<LoaderCircle className="spin"/>:<LogIn/>} Google로 로그인</button>{error&&<Notice text={error}/>}<small>폼 제작자와 응답자 모두 Google 로그인이 필요합니다.</small></div></main> }
+function Login({loadingProvider,error,onLogin}:{loadingProvider:LoginProvider|null;error:string;onLogin:(provider:LoginProvider,email?:string,password?:string)=>void}) {
+  const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const loading=loadingProvider!==null
+  return <main className="login"><div className="login-card"><div className="logo">대</div><span className="eyebrow">DAEPUL FORM</span><h1>자료 한 번 올리면<br/>폼부터 결과까지</h1><p>첨부문서를 AI가 읽어 알맞은 폼을 만들고, 실제 응답을 자동으로 집계합니다.</p><div className="login-options"><button className="social-login google" disabled={loading||!firebaseConfigured} onClick={()=>void onLogin('google')}>{loadingProvider==='google'?<LoaderCircle className="spin"/>:<span className="login-mark">G</span>} Google로 로그인</button><button className="social-login kakao" disabled={loading||!firebaseConfigured} onClick={()=>void onLogin('kakao')}>{loadingProvider==='kakao'?<LoaderCircle className="spin"/>:<span className="login-mark">K</span>} 카카오로 로그인</button><button className="social-login naver" disabled={loading||!firebaseConfigured} onClick={()=>void onLogin('naver')}>{loadingProvider==='naver'?<LoaderCircle className="spin"/>:<span className="login-mark">N</span>} 네이버로 로그인</button></div><div className="login-divider"><span>또는 이메일</span></div><form className="email-login" onSubmit={(event)=>{event.preventDefault();void onLogin('email',email,password)}}><label>이메일<input type="email" autoComplete="email" value={email} onChange={(event)=>setEmail(event.target.value)} required/></label><label>비밀번호<input type="password" autoComplete="current-password" value={password} onChange={(event)=>setPassword(event.target.value)} required/></label><button className="email-login-button" disabled={loading||!firebaseConfigured}>{loadingProvider==='email'?<LoaderCircle className="spin"/>:<LogIn/>} 이메일로 로그인</button></form>{error&&<Notice text={error}/>}<small>폼 제작자와 응답자 모두 로그인이 필요합니다.</small></div></main>
+}
 function Title({step,title,text}:{step:string;title:string;text:string}) { return <div className="title"><span>{step&&`${step}단계`}</span><h1>{title}</h1><p>{text}</p></div> }
 function Notice({text}:{text:string}) { return <div className="notice">{text}</div> }
 
@@ -236,7 +259,7 @@ function PublicForm({user,formId,program,questions,theme,endDate,onLogout}:{user
   }
 
   if(loading)return <div className="center"><LoaderCircle className="spin"/></div>
-  if(submitted)return <main className="public-shell"><div className="complete card"><CheckCircle2/><h1>응답 제출 완료</h1><p>이 Google 계정으로 제출한 응답이 있습니다. 제출 후에는 수정하거나 삭제할 수 없습니다.</p><button type="button" onClick={onLogout}><LogOut/> 로그아웃</button></div></main>
+  if(submitted)return <main className="public-shell"><div className="complete card"><CheckCircle2/><h1>응답 제출 완료</h1><p>현재 로그인한 계정으로 제출한 응답이 있습니다. 제출 후에는 수정하거나 삭제할 수 없습니다.</p><button type="button" onClick={onLogout}><LogOut/> 로그아웃</button></div></main>
 
   return <main className={`public-shell theme-${theme}`}>
     <div className="public-user"><span>{user.email}</span><button type="button" onClick={onLogout}><LogOut/> 로그아웃</button></div>

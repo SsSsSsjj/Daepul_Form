@@ -1,0 +1,94 @@
+.login-options {
+  display: grid;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.social-login {
+  width: 100%;
+  margin: 0;
+  padding: 13px;
+  border: 0;
+  font-weight: 700;
+}
+
+.social-login.google {
+  background: #172523;
+  color: #fff;
+}
+
+.social-login.kakao {
+  background: #fee500;
+  color: #191919;
+}
+
+.social-login.naver {
+  background: #03c75a;
+  color: #fff;
+}
+
+.login-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #ffffff26;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.kakao .login-mark {
+  background: #191919;
+  color: #fee500;
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  color: #87928f;
+  font-size: 12px;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  height: 1px;
+  background: #e1e7e4;
+  flex: 1;
+}
+
+.email-login {
+  display: grid;
+  gap: 11px;
+}
+
+.email-login label {
+  display: grid;
+  gap: 6px;
+  color: #43504d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.email-login input {
+  width: 100%;
+  border: 1px solid #cdd8d4;
+  border-radius: 9px;
+  padding: 11px;
+  background: #fff;
+}
+
+.email-login-button {
+  width: 100%;
+  padding: 13px;
+  background: #fff;
+  border-color: #9db0aa;
+  font-weight: 700;
+}
+
+.login-card > .notice {
+  margin-bottom: 16px;
+}
