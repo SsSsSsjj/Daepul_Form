@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "build:functions": "npm --prefix functions run build",
     "lint": "eslint .",
+    "test:firestore-rules": "firebase emulators:exec --project daepulform-rules-test --only auth,firestore \"node test/firestore-rules.mjs\"",
     "test:functions": "npm --prefix functions test",
     "test:functions:emulator": "firebase emulators:exec --only functions,firestore \"node functions/test/emulator-smoke.mjs\"",
     "preview": "vite preview"

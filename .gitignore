@@ -3,6 +3,7 @@ dist
 .DS_Store
 *.local
 firebase-debug.log*
+firestore-debug.log*
 .firebase/
 functions/lib/
 functions/.env*

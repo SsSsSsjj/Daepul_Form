@@ -30,7 +30,10 @@ service cloud.firestore {
           && responseUid == request.auth.uid
           && !exists(/databases/$(database)/documents/forms/$(formId)/responses/$(responseUid))
           && get(/databases/$(database)/documents/forms/$(formId)).data.published == true;
-        allow read: if ownsForm(formId);
+        // Respondents need to read only their own document so the client can
+        // detect an existing submission before attempting an immutable create.
+        allow read: if ownsForm(formId)
+          || (signedIn() && responseUid == request.auth.uid);
         allow update: if false;
         allow delete: if ownsForm(formId);
       }
