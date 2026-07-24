@@ -1,10 +1,25 @@
 node_modules
 dist
 .DS_Store
-*.local
 firebase-debug.log*
 firestore-debug.log*
 .firebase/
 functions/lib/
+
+# Local environment files may contain credentials.
+.env
+.env.*
+!.env.example
+*.local
 functions/.env*
 !functions/.env.example
+
+# Service accounts, OAuth credentials, certificates, and private keys.
+**/*service-account*.json
+**/*service_account*.json
+**/*credentials*.json
+**/*firebase-admin*.json
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.key

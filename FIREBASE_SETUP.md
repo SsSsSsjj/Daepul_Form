@@ -113,9 +113,9 @@ AUTH_PUBLIC_ORIGIN=http://127.0.0.1:5001
 
 ```text
 KAKAO_CLIENT_ID=emulator-kakao-client
-KAKAO_CLIENT_SECRET=emulator-kakao-secret
+KAKAO_CLIENT_SECRET=your-kakao-client-secret
 NAVER_CLIENT_ID=emulator-naver-client
-NAVER_CLIENT_SECRET=emulator-naver-secret
+NAVER_CLIENT_SECRET=your-naver-client-secret
 ```
 
 스모크 테스트는 외부 `returnTo` 차단, OAuth 취소, `state` 재사용 거부, 잘못된 일회용 교환 코드 거부를 실제 HTTP Function과 Firestore 에뮬레이터에서 확인합니다. 실제 공급자 로그인은 배포 후 테스트 계정으로 확인합니다.
