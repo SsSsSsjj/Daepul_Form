@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   Archive, ArrowDown, ArrowUp, BarChart3, CheckSquare, ChevronLeft, ChevronRight,
@@ -6,9 +6,9 @@ import {
   Printer, RefreshCcw, RotateCcw, Search, Sheet, Sparkles, Table2, Trash2, UserRound, X,
 } from 'lucide-react'
 import type {
-  FormQuestion, QuestionSummary, ResponseFilters, ResponsePage, ResponseQuery, ResponseTopic, StoredFormResponse,
+  FormQuestion, KeywordInsight, QuestionSummary, ResponseFilters, ResponsePage, ResponseQuery, ResponseTopic, StoredFormResponse,
 } from '../../types'
-import { downloadTextFile, filterResponses, queryResponses, responsesToCsv } from './model'
+import { downloadTextFile, extractKeywordInsights, filterResponses, queryResponses, responsesToCsv } from './model'
 
 type ResultsTab = 'summary' | 'question' | 'individual' | 'table'
 type ColumnKey = 'submittedAt' | 'respondentName' | 'studentId' | 'respondentEmail' | `question:${number}`
@@ -255,6 +255,8 @@ export function ResultsDashboard({
   const [exporting, setExporting] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [topics, setTopics] = useState<ResponseTopic[]>([])
+  const [keywords, setKeywords] = useState<KeywordInsight[]>([])
+  const [keywordAnalyzing, setKeywordAnalyzing] = useState(false)
   const [incomingPage, setIncomingPage] = useState<ResponsePage>()
   const dashboardRef = useRef<HTMLElement>(null)
   const latestTotal = useRef(initialPage?.overallTotal ?? initialPage?.total ?? responses.length)
@@ -308,6 +310,10 @@ export function ResultsDashboard({
 
   const result = onQuery && !sample ? (serverPage ?? localResult) : localResult
   const activeSummaries = result.summaries ?? summaries
+  const quizResults = result.items.map((response) => response.quizResult).filter(Boolean)
+  const quizAverage = quizResults.length
+    ? quizResults.reduce((total, item) => total + (item?.percentage ?? 0), 0) / quizResults.length
+    : 0
   const pageCount = Math.max(1, Math.ceil(result.total / pageSize))
   const safeTitle = (title || '대플폼').replace(/[\\/:*?"<>|]/g, '_')
   const filterCount = Number(filters.status !== 'all') + Number(filters.questionId !== undefined)
@@ -366,6 +372,7 @@ export function ResultsDashboard({
       <div className="result-actions">
         <button onClick={onRefresh} disabled={loading || serverLoading}>{loading || serverLoading ? <RefreshCcw className="spin"/> : <RefreshCcw/>} 새로고침</button>
         {onAnalyze && <button onClick={() => { setAnalyzing(true); void onAnalyze(query).then((items) => { setTopics(items); setActionMessage('AI가 주관식 의견을 요약·분류했습니다.') }).catch(() => setActionMessage('AI 분석을 완료하지 못했습니다.')).finally(() => setAnalyzing(false)) }} disabled={analyzing || !result.total}>{analyzing ? <RefreshCcw className="spin"/> : <Sparkles/>} AI 요약</button>}
+        <button onClick={() => { setKeywordAnalyzing(true); const source=onLoadExport?onLoadExport(query):Promise.resolve(filterResponses(responses,query.filters));void source.then(items=>{const next=extractKeywordInsights(items,questions);setKeywords(next);setActionMessage(next.length?'반복 키워드를 분석했습니다.':'두 개 이상의 응답에서 반복된 키워드가 없습니다.')}).catch(()=>setActionMessage('키워드 분석을 완료하지 못했습니다.')).finally(()=>setKeywordAnalyzing(false)) }} disabled={keywordAnalyzing || !result.total}>{keywordAnalyzing?<RefreshCcw className="spin"/>:<Search/>} 키워드 분석</button>
         <button onClick={() => void dashboardRef.current?.requestFullscreen?.()}><ExternalLink/> 전체화면</button>
         <button onClick={() => void performExport('csv')} disabled={exporting || !result.total}><Download/> CSV</button>
         <button className="primary" onClick={() => void performExport('excel')} disabled={exporting || !result.total}><Sheet/> Excel</button>
@@ -401,7 +408,9 @@ export function ResultsDashboard({
     </div>}
     {selectedIds.length > 0 && tab === 'table' && <div className="bulk-action-bar" role="toolbar" aria-label="선택 응답 작업"><strong><CheckSquare/> {selectedIds.length}개 선택</strong><button onClick={() => void manageSelected('reviewed')}>검토 완료</button><button onClick={() => void manageSelected('archived')}><Archive/> 보관</button><button className="danger" onClick={() => void manageSelected('delete')}><Trash2/> 삭제</button><button onClick={() => setSelectedIds([])}>선택 해제</button></div>}
     {tab === 'summary' && <SummaryView summaries={activeSummaries} responses={result.items} dailyCounts={result.dailyCounts}/>}
+    {tab === 'summary' && quizResults.length > 0 && <section className="card quiz-result-summary"><div><span className="eyebrow">QUIZ SCORE</span><h2>자동채점 결과</h2><p>현재 결과 범위에서 채점된 응답 {quizResults.length}건</p></div><strong>{quizAverage.toFixed(1)}<small>평균 점수(%)</small></strong><div className="quiz-score-list">{quizResults.slice(0,10).map((item,index)=><span key={index} style={{'--score':`${item?.percentage??0}%`} as CSSProperties}><b>{item?.score} / {item?.maxScore}</b><i/></span>)}</div></section>}
     {tab === 'summary' && topics.length > 0 && <section className="card ai-result-topics"><h2><Sparkles/> AI 의견 요약</h2><p>자동 분석 결과는 원문과 함께 검토해 주세요.</p><div>{topics.map((topic) => <article key={topic.id}><span className="badge">{topic.category}</span><h3>{topic.title}</h3><p>{topic.summary}</p><small>{topic.reportSentence}</small></article>)}</div></section>}
+    {tab === 'summary' && keywords.length > 0 && <section className="card keyword-insights"><div><span className="eyebrow">KEYWORD INSIGHTS</span><h2>반복 답변 키워드</h2><p>현재 필터 범위의 주관식 답변에서 두 명 이상이 언급한 표현입니다.</p></div><ol>{keywords.map((item,index)=><li key={item.keyword}><span>{index+1}</span><b>{item.keyword}</b><strong>{item.responseCount}명</strong><small>총 {item.count}회</small></li>)}</ol></section>}
     {tab === 'question' && <QuestionView questions={questions} summaries={activeSummaries} total={result.total}/>}
     {tab === 'individual' && <IndividualView questions={questions} responses={result.items}/>}
     {tab === 'table' && <><VirtualTable questions={questions} responses={result.items} selectedIds={selectedIds} onSelectionChange={setSelectedIds} visibleColumns={visibleColumns} questionOrder={questionOrder} questionWidth={questionWidth} onDetail={setDetail}/>

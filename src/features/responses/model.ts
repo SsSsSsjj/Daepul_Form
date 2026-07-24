@@ -2,6 +2,7 @@ import {
   defaultFormSettings,
   type FormQuestion,
   type FormSettings,
+  type KeywordInsight,
   type ResponseFilters,
   type ResponsePage,
   type ResponseQuery,
@@ -22,8 +23,49 @@ export function normalizeFormSettings(value?: Partial<FormSettings>): FormSettin
     branding: { ...defaultFormSettings.branding, ...value?.branding },
     notifications: { ...defaultFormSettings.notifications, ...value?.notifications },
     integrations: { ...defaultFormSettings.integrations, ...value?.integrations },
+    quiz: { ...defaultFormSettings.quiz, ...value?.quiz },
+    workspace: { ...defaultFormSettings.workspace, ...value?.workspace },
     version: Number(value?.version) || 1,
   }
+}
+
+const keywordStopWords = new Set([
+  '그리고', '그러나', '하지만', '대한', '위한', '있는', '없는', '있습니다', '없습니다', '입니다',
+  '합니다', '했습니다', '좋아요', '좋습니다', '정말', '매우', '조금', '너무', 'the', 'and', 'for',
+  'that', 'this', 'with', 'from', 'have', 'was', 'were',
+])
+
+export function extractKeywordInsights(
+  responses: StoredFormResponse[],
+  questions: FormQuestion[],
+  limit = 12,
+): KeywordInsight[] {
+  const textQuestionIds = new Set(
+    questions.filter(({ type }) => type === 'short_text' || type === 'long_text').map(({ id }) => String(id)),
+  )
+  const counts = new Map<string, { count: number; responses: Set<string> }>()
+  responses.forEach((response) => {
+    const responseKeywords = new Set<string>()
+    Object.entries(response.answers).forEach(([questionId, value]) => {
+      if (!textQuestionIds.has(questionId) || typeof value !== 'string') return
+      const tokens = value.toLocaleLowerCase('ko')
+        .match(/[가-힣]{2,}|[a-z][a-z0-9-]{2,}/g) ?? []
+      tokens.forEach((token) => {
+        if (keywordStopWords.has(token)) return
+        const entry = counts.get(token) ?? { count: 0, responses: new Set<string>() }
+        entry.count += 1
+        entry.responses.add(response.id)
+        counts.set(token, entry)
+        responseKeywords.add(token)
+      })
+    })
+    void responseKeywords
+  })
+  return [...counts.entries()]
+    .map(([keyword, value]) => ({ keyword, count: value.count, responseCount: value.responses.size }))
+    .filter(({ responseCount }) => responseCount >= 2)
+    .sort((left, right) => right.responseCount - left.responseCount || right.count - left.count || left.keyword.localeCompare(right.keyword, 'ko'))
+    .slice(0, Math.max(1, limit))
 }
 
 export function getFormAvailability(

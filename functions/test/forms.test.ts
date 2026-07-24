@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateFormAccess, validateSubmittedAnswers } from '../src/forms'
+import { evaluateFormAccess, scoreQuizAnswers, validateSubmittedAnswers } from '../src/forms'
 
 const openForm = {
   status: 'open',
@@ -71,5 +71,32 @@ describe('validateSubmittedAnswers', () => {
       { questionId: 'email', value: 'student@kangnam.ac.kr' },
       { questionId: 'student', value: '20261234' },
     ])).toEqual({ valid: true })
+  })
+})
+
+describe('scoreQuizAnswers', () => {
+  it('scores single and multiple answer questions without depending on answer order', () => {
+    expect(scoreQuizAnswers({
+      enabled: true,
+      releaseScore: 'immediately',
+      showCorrectAnswers: true,
+      questions: {
+        1: { points: 2, correctAnswers: ['서울'] },
+        2: { points: 3, correctAnswers: ['A', 'B'] },
+      },
+    }, { 1: '서울', 2: ['B', 'A'] })).toMatchObject({
+      score: 5,
+      maxScore: 5,
+      percentage: 100,
+      released: true,
+    })
+  })
+
+  it('keeps scores private when release is deferred', () => {
+    expect(scoreQuizAnswers({
+      enabled: true,
+      releaseScore: 'later',
+      questions: { 1: { points: 10, correctAnswers: ['yes'] } },
+    }, { 1: 'no' })).toMatchObject({ score: 0, maxScore: 10, released: false })
   })
 })

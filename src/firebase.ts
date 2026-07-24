@@ -248,13 +248,17 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
   const targetSnapshot = await getDoc(doc(db, 'forms', targetFormId))
   const nextVersion = targetFormId === formId && checkForExistingResponses ? settings.version + 1 : 1
   const versionedSettings = { ...settings, version: nextVersion }
+  const publicQuestions = questions.map(({ correctAnswers: _correctAnswers, correctFeedback: _correctFeedback, incorrectFeedback: _incorrectFeedback, ...question }) => {
+    void _correctAnswers; void _correctFeedback; void _incorrectFeedback
+    return question
+  })
   await setDoc(doc(db, 'forms', targetFormId), {
     formId: targetFormId,
     creatorUid: owner.uid,
     ownerUid: owner.uid,
     ownerEmail: owner.email,
     program,
-    questions,
+    questions: publicQuestions,
     formType,
     theme,
     settings: versionedSettings,
@@ -273,6 +277,19 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
     settings: versionedSettings,
     createdAt: serverTimestamp(),
     createdBy: owner.uid,
+  })
+  await setDoc(doc(db, 'forms', targetFormId, 'quiz', 'config'), {
+    enabled: settings.quiz.enabled,
+    releaseScore: settings.quiz.releaseScore,
+    showCorrectAnswers: settings.quiz.showCorrectAnswers,
+    questions: Object.fromEntries(questions.map((question) => [String(question.id), {
+      points: Math.max(0, Number(question.points ?? 0)),
+      correctAnswers: question.correctAnswers ?? [],
+      correctFeedback: question.correctFeedback ?? '',
+      incorrectFeedback: question.incorrectFeedback ?? '',
+    }])),
+    updatedAt: serverTimestamp(),
+    updatedBy: owner.uid,
   })
   return targetFormId
 }
@@ -310,7 +327,7 @@ export async function getPublishedForm(formId: string, includePrivate = false) {
 export async function getOwnedForms(userUid: string) {
   if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
   const snapshot = await getDocs(query(collection(db, 'forms'), where('ownerUid', '==', userUid)))
-  return snapshot.docs.filter((item) => !item.data().deletedAt).map((item) => {
+  const owned = snapshot.docs.filter((item) => !item.data().deletedAt).map((item) => {
     const data = item.data()
     return {
       id: item.id,
@@ -322,8 +339,20 @@ export async function getOwnedForms(userUid: string) {
       maxResponses: Number(data.settings?.submission?.maxResponses ?? 0),
       publicSlug: String(data.settings?.publicSlug ?? ''),
       responseCount: Number(data.responseCount ?? 0),
+      organizationShared: false,
+      workspaceName: String(data.settings?.workspace?.name ?? ''),
+      ownerEmail: String(data.ownerEmail ?? ''),
     }
   })
+  if (!functions) return owned
+  try {
+    const shared = await httpsCallable<Record<string, never>, { forms: typeof owned }>(functions, 'listOrganizationForms')({})
+    return [...owned, ...shared.data.forms
+      .filter((form) => !owned.some((item) => item.id === form.id))
+      .map((form) => ({ ...form, title: `[${form.workspaceName || '조직 공유'}] ${form.title}` }))]
+  } catch {
+    return owned
+  }
 }
 
 export async function getDeletedForms(userUid: string) {
@@ -396,6 +425,7 @@ export async function getFormResponses(formId: string): Promise<StoredFormRespon
       status: data.status ?? 'submitted',
       formVersion: Number(data.formVersion ?? 1),
       attachments: data.attachments ?? [],
+      quizResult: data.quizResult,
     }
   })
 }
@@ -438,13 +468,17 @@ export async function updateOwnResponse(
   respondent: { name: string; studentId: string; email: string },
 ) {
   if (!functions) throw new Error('Firebase Functions가 설정되지 않았습니다.')
-  await httpsCallable(functions, 'updateOwnFormResponse')({
+  const result = await httpsCallable<
+    Record<string, unknown>,
+    { responseId: string; quizResult?: import('./types').QuizResult }
+  >(functions, 'updateOwnFormResponse')({
     formId,
     answers,
     respondentName: respondent.name,
     studentId: respondent.studentId,
     respondentEmail: respondent.email,
   })
+  return result.data.quizResult ?? null
 }
 
 export async function getPublicResultSummary(formId: string): Promise<{
@@ -521,14 +555,17 @@ export async function submitResponseOnce({ formId, user, answers, surveyEndDate,
   respondentName?: string
   studentId?: string
   attachments?: ResponseAttachment[]
-}) {
+}): Promise<import('./types').QuizResult | null> {
   if (!functions) throw new Error('Firebase Functions가 설정되지 않았습니다.')
   void user
   void surveyEndDate
   void questions
   void settings
   try {
-    await httpsCallable(functions, 'submitFormResponse')({
+    const result = await httpsCallable<
+      Record<string, unknown>,
+      { responseId: string; quizResult?: import('./types').QuizResult }
+    >(functions, 'submitFormResponse')({
       formId,
       answers,
       respondentEmail,
@@ -536,6 +573,7 @@ export async function submitResponseOnce({ formId, user, answers, surveyEndDate,
       studentId,
       attachments,
     })
+    return result.data.quizResult ?? null
   } catch (error) {
     const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
     if (code.endsWith('already-exists')) throw new Error('already-submitted')

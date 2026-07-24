@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, CalendarClock, LockKeyhole, Mail, Settings2, Users } from 'lucide-react'
+import { Bell, Building2, CalendarClock, LockKeyhole, Mail, Settings2, Trophy, Type, Users } from 'lucide-react'
 import type { FormSettings, FormLifecycleStatus, IdentityCollection, ParticipationPolicy } from '../../types'
 
 export function FormPolicyEditor({
@@ -21,6 +21,8 @@ export function FormPolicyEditor({
   const updateNotifications = (change: Partial<FormSettings['notifications']>) => onChange({ ...value, notifications: { ...value.notifications, ...change } })
   const updateBranding = (change: Partial<FormSettings['branding']>) => onChange({ ...value, branding: { ...value.branding, ...change } })
   const updateIntegrations = (change: Partial<FormSettings['integrations']>) => onChange({ ...value, integrations: { ...value.integrations, ...change } })
+  const updateQuiz = (change: Partial<FormSettings['quiz']>) => onChange({ ...value, quiz: { ...value.quiz, ...change } })
+  const updateWorkspace = (change: Partial<FormSettings['workspace']>) => onChange({ ...value, workspace: { ...value.workspace, ...change } })
 
   return <div className="policy-editor">
     <section>
@@ -89,6 +91,33 @@ export function FormPolicyEditor({
       <label>공유 설명<textarea value={value.branding.shareDescription ?? ''} onChange={(event) => updateBranding({ shareDescription: event.target.value })}/></label>
       <label>공유 대표 이미지 URL<input type="url" value={value.branding.shareImageUrl ?? ''} onChange={(event) => updateBranding({ shareImageUrl: event.target.value })}/></label>
       <small>기관 로고는 사용 허가를 확인한 공식 이미지 URL만 입력해 주세요.</small>
+      <h4><Type/> 고급 글꼴</h4>
+      <label>글꼴 스타일
+        <select value={value.branding.fontPreset ?? 'system'} onChange={(event) => updateBranding({ fontPreset: event.target.value as FormSettings['branding']['fontPreset'] })}>
+          <option value="system">시스템 기본</option><option value="serif">명조형</option><option value="rounded">둥근 고딕형</option><option value="custom">사용자 글꼴</option>
+        </select>
+      </label>
+      {value.branding.fontPreset === 'custom' && <>
+        <label>글꼴 이름<input value={value.branding.customFontFamily ?? ''} onChange={(event) => updateBranding({ customFontFamily: event.target.value.replace(/[^0-9A-Za-z가-힣 _-]/g, '').slice(0, 80) })} placeholder="예: Pretendard"/></label>
+        <label>글꼴 CSS URL<input type="url" value={value.branding.customFontUrl ?? ''} onChange={(event) => updateBranding({ customFontUrl: event.target.value })} placeholder="https://fonts.googleapis.com/css2?..."/></label>
+        <small>HTTPS로 제공되는 신뢰할 수 있는 글꼴 CSS 주소만 사용하세요.</small>
+      </>}
+    </section>
+    <section>
+      <h3><Trophy/> 퀴즈 및 자동채점</h3>
+      <label className="switch-row"><input type="checkbox" checked={value.quiz.enabled} onChange={(event) => updateQuiz({ enabled: event.target.checked })}/><span><b>퀴즈 모드 사용</b><small>질문별 정답과 배점을 설정하고 제출 시 서버에서 자동채점합니다.</small></span></label>
+      {value.quiz.enabled && <>
+        <label>점수 공개 시점<select value={value.quiz.releaseScore} onChange={(event) => updateQuiz({ releaseScore: event.target.value as FormSettings['quiz']['releaseScore'] })}><option value="immediately">제출 직후</option><option value="later">검토 후 공개</option></select></label>
+        <label className="switch-row"><input type="checkbox" checked={value.quiz.showCorrectAnswers} onChange={(event) => updateQuiz({ showCorrectAnswers: event.target.checked })}/><span><b>정답 공개</b><small>점수를 즉시 공개할 때 문항별 정답도 함께 보여줍니다.</small></span></label>
+      </>}
+    </section>
+    <section>
+      <h3><Building2/> 조직 공유 공간</h3>
+      <label className="switch-row"><input type="checkbox" checked={value.workspace.enabled} onChange={(event) => updateWorkspace({ enabled: event.target.checked })}/><span><b>조직 구성원에게 공유</b><small>같은 인증 이메일 도메인의 구성원이 관리 화면에서 이 폼을 찾을 수 있습니다.</small></span></label>
+      {value.workspace.enabled && <div className="grid two">
+        <label>공간 이름<input value={value.workspace.name} onChange={(event) => updateWorkspace({ name: event.target.value.slice(0, 80) })} placeholder="예: 강남대학교 학생지원팀"/></label>
+        <label>이메일 도메인<input value={value.workspace.emailDomain} onChange={(event) => updateWorkspace({ emailDomain: event.target.value.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9.-]/g, '').slice(0, 120) })} placeholder="kangnam.ac.kr"/></label>
+      </div>}
     </section>
     <section>
       <h3><Bell/> 제작자 알림</h3>
