@@ -9,7 +9,6 @@ export type IdentityCollection = 'anonymous' | 'profile' | 'email_input' | 'veri
 export type ResponseStatus = 'draft' | 'submitted' | 'reviewed' | 'archived'
 export type CollaboratorRole = 'viewer' | 'editor'
 export type NotificationStatus = 'idle' | 'queued' | 'sent' | 'failed'
-
 export interface FormAccessSettings {
   participation: ParticipationPolicy
   identityCollection: IdentityCollection
@@ -24,6 +23,7 @@ export interface FormSubmissionSettings {
   emailReceipt: boolean
   showOwnResponse: boolean
   showPublicResults: boolean
+  randomizeQuestions: boolean
   submitLabel: string
   completionMessage: string
   maxResponses?: number
@@ -57,6 +57,10 @@ export interface FormSettings {
     closingSoonEmail: boolean
     closedEmail: boolean
   }
+  integrations: {
+    sheetsWebhookUrl?: string
+    webhookUrl?: string
+  }
   publicSlug?: string
   version: number
 }
@@ -75,6 +79,7 @@ export const defaultFormSettings: FormSettings = {
     emailReceipt: false,
     showOwnResponse: true,
     showPublicResults: false,
+    randomizeQuestions: false,
     submitLabel: '응답 제출하기',
     completionMessage: '응답이 정상적으로 제출되었습니다.',
   },
@@ -86,6 +91,7 @@ export const defaultFormSettings: FormSettings = {
     closingSoonEmail: false,
     closedEmail: false,
   },
+  integrations: {},
   version: 1,
 }
 
@@ -124,7 +130,7 @@ export interface GeneratedForm {
 
 export interface StoredFormResponse {
   id: string
-  answers: Record<string, string | boolean | number>
+  answers: Record<string, AnswerValue>
   responseId?: string
   formId?: string
   submittedAt?: string
@@ -153,7 +159,7 @@ export interface ResponseDraft {
   formId: string
   actorId: string
   formVersion: number
-  answers: Record<string, string | boolean | number>
+  answers: Record<string, AnswerValue>
   updatedAt: string
 }
 
@@ -179,9 +185,12 @@ export interface ResponseQuery {
 export interface ResponsePage {
   items: StoredFormResponse[]
   total: number
+  overallTotal?: number
   page: number
   pageSize: number
   hasMore: boolean
+  summaries?: QuestionSummary[]
+  dailyCounts?: Array<{ date: string; count: number }>
 }
 
 export interface QuestionSummary {

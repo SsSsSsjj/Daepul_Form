@@ -21,6 +21,7 @@ export function normalizeFormSettings(value?: Partial<FormSettings>): FormSettin
     schedule: { ...defaultFormSettings.schedule, ...value?.schedule },
     branding: { ...defaultFormSettings.branding, ...value?.branding },
     notifications: { ...defaultFormSettings.notifications, ...value?.notifications },
+    integrations: { ...defaultFormSettings.integrations, ...value?.integrations },
     version: Number(value?.version) || 1,
   }
 }
@@ -44,6 +45,7 @@ export function getFormAvailability(
 
 export function validateAnswer(question: FormQuestion, value: unknown) {
   const empty = value === undefined || value === null || value === '' || value === false
+    || (Array.isArray(value) && value.length === 0)
   if (question.required && empty) return '필수 질문입니다.'
   if (empty) return ''
   const text = String(value)

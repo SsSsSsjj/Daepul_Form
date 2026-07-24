@@ -53,4 +53,25 @@ describe('ResultsDashboard', () => {
     expect(screen.getByRole('button', { name: /인쇄 \/ PDF/ })).toBeInTheDocument()
     expect(screen.getByText('20260001')).toBeInTheDocument()
   })
+
+  it('provides advanced filters, configurable columns and server-backed bulk actions', () => {
+    const manage = vi.fn().mockResolvedValue(undefined)
+    render(<ResultsDashboard
+      title="테스트 폼"
+      loading={false}
+      responses={responses}
+      questions={questions}
+      summaries={summaries}
+      message=""
+      onRefresh={vi.fn()}
+      onExportExcel={vi.fn()}
+      onManage={manage}
+    />)
+    fireEvent.click(screen.getByRole('tab', { name: /표/ }))
+    expect(screen.getByLabelText('상태')).toBeInTheDocument()
+    expect(screen.getByText('선택 질문 미응답만')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /열 설정/ }))
+    expect(screen.getByText('질문 열 너비')).toBeInTheDocument()
+    expect(screen.getByLabelText('현재 페이지 전체 선택')).toBeInTheDocument()
+  })
 })

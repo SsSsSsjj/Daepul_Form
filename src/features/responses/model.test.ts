@@ -65,4 +65,27 @@ describe('public response model', () => {
     expect(page.total).toBe(10_000)
     expect(performance.now() - startedAt).toBeLessThan(2_000)
   })
+
+  it('combines status, answer, rating, missing and selected-response filters', () => {
+    const responses: StoredFormResponse[] = [
+      { id: 'a', status: 'reviewed', answers: { 1: '홍길동', 2: 5 } },
+      { id: 'b', status: 'submitted', answers: { 1: '김대플' } },
+    ]
+    const reviewed = queryResponses(responses, {
+      filters: { query: '', status: 'reviewed', questionId: 2, ratingMin: 4, selectedIds: ['a'] },
+      sortBy: 'answer',
+      sortDirection: 'desc',
+      page: 1,
+      pageSize: 25,
+    })
+    expect(reviewed.items.map((item) => item.id)).toEqual(['a'])
+    const missing = queryResponses(responses, {
+      filters: { query: '', status: 'all', missingQuestionId: 2, selectedIds: [] },
+      sortBy: 'name',
+      sortDirection: 'asc',
+      page: 1,
+      pageSize: 25,
+    })
+    expect(missing.items.map((item) => item.id)).toEqual(['b'])
+  })
 })
