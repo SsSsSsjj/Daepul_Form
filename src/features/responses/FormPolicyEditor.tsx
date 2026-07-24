@@ -4,10 +4,14 @@ import type { FormSettings, FormLifecycleStatus, IdentityCollection, Participati
 
 export function FormPolicyEditor({
   value,
+  previewTitle,
+  previewDescription,
   onChange,
   onCollaborator,
 }: {
   value: FormSettings
+  previewTitle?: string
+  previewDescription?: string
   onChange: (value: FormSettings) => void
   onCollaborator?: (email: string, role: 'viewer' | 'editor' | 'remove') => Promise<void>
 }) {
@@ -79,17 +83,22 @@ export function FormPolicyEditor({
       <label className="switch-row"><input type="checkbox" checked={value.submission.showOwnResponse} onChange={(event) => updateSubmission({ showOwnResponse: event.target.checked })}/><span><b>제출 후 자기 답변 확인</b></span></label>
       <label className="switch-row"><input type="checkbox" checked={value.submission.allowEditAfterSubmit} onChange={(event) => updateSubmission({ allowEditAfterSubmit: event.target.checked })}/><span><b>제출 후 답변 수정</b></span></label>
       <label className="switch-row"><input type="checkbox" checked={value.submission.showPublicResults} onChange={(event) => updateSubmission({ showPublicResults: event.target.checked })}/><span><b>익명 집계 결과 공개</b></span></label>
-      <label className="switch-row"><input type="checkbox" checked={value.submission.emailReceipt} onChange={(event) => updateSubmission({ emailReceipt: event.target.checked })}/><span><b><Mail/> 응답 사본 이메일</b></span></label>
+      <label className="switch-row"><input type="checkbox" checked={value.submission.emailReceipt} onChange={(event) => updateSubmission({ emailReceipt: event.target.checked })}/><span><b><Mail/> 제출자에게 답변 사본 보내기</b><small>제출자가 입력하거나 인증한 이메일 주소로 자신이 제출한 답변 내용을 보내는 기능입니다. 이메일 주소를 받지 않는 익명 폼에서는 발송할 수 없습니다.</small></span></label>
       <label className="switch-row"><input type="checkbox" checked={value.submission.randomizeQuestions} onChange={(event) => updateSubmission({ randomizeQuestions: event.target.checked })}/><span><b>질문 순서 무작위 배치</b><small>섹션 안에서 응답자마다 안정적으로 섞습니다.</small></span></label>
     </section>
     <section>
       <h3><Settings2/> 브랜딩과 링크 미리보기</h3>
       <label>폼 아이콘<select value={value.branding.icon ?? 'none'} onChange={(event) => updateBranding({ icon: event.target.value as FormSettings['branding']['icon'] })}><option value="none">아이콘 없음</option><option value="calendar">행사·일정</option><option value="clipboard">신청·설문</option><option value="graduation">교육</option><option value="heart">복지</option></select></label>
       <label>헤더 이미지 URL<input type="url" value={value.branding.headerImageUrl ?? ''} onChange={(event) => updateBranding({ headerImageUrl: event.target.value })} placeholder="https://..."/></label>
-      <div className="grid two"><label>배경색<input type="color" value={value.branding.backgroundColor ?? '#f4f7f5'} onChange={(event) => updateBranding({ backgroundColor: event.target.value })}/></label><label>강조색<input type="color" value={value.branding.accentColor ?? '#086f63'} onChange={(event) => updateBranding({ accentColor: event.target.value })}/></label></div>
+      <div className="grid two color-settings"><label>배경색<span className="color-control"><input aria-label="배경색 선택" type="color" value={value.branding.backgroundColor ?? '#f4f7f5'} onChange={(event) => updateBranding({ backgroundColor: event.target.value })}/><b>{value.branding.backgroundColor ?? '#f4f7f5'}</b></span></label><label>강조색<span className="color-control"><input aria-label="강조색 선택" type="color" value={value.branding.accentColor ?? '#086f63'} onChange={(event) => updateBranding({ accentColor: event.target.value })}/><b>{value.branding.accentColor ?? '#086f63'}</b></span></label></div>
       <label>공유 제목<input value={value.branding.shareTitle ?? ''} onChange={(event) => updateBranding({ shareTitle: event.target.value })}/></label>
       <label>공유 설명<textarea value={value.branding.shareDescription ?? ''} onChange={(event) => updateBranding({ shareDescription: event.target.value })}/></label>
       <label>공유 대표 이미지 URL<input type="url" value={value.branding.shareImageUrl ?? ''} onChange={(event) => updateBranding({ shareImageUrl: event.target.value })}/></label>
+      <div className="link-preview" aria-label="링크 공유 미리보기">
+        {value.branding.shareImageUrl ? <img src={value.branding.shareImageUrl} alt="공유 대표 이미지 미리보기"/> : <div className="link-preview-placeholder"><Settings2/><span>대표 이미지 미리보기</span></div>}
+        <div><small>daepulform.web.app</small><b>{value.branding.shareTitle || previewTitle || '공유 제목이 여기에 표시됩니다'}</b><p>{value.branding.shareDescription || previewDescription || '공유 설명을 입력하면 메신저와 SNS 링크 카드에 표시될 내용을 여기서 미리 볼 수 있습니다.'}</p></div>
+      </div>
+      <small>위 카드는 카카오톡·메신저·SNS에 링크를 공유할 때 보일 내용을 미리 보여줍니다. 서비스별 캐시 정책에 따라 실제 모양은 조금 다를 수 있습니다.</small>
       <small>기관 로고는 사용 허가를 확인한 공식 이미지 URL만 입력해 주세요.</small>
       <h4><Type/> 고급 글꼴</h4>
       <label>글꼴 스타일
@@ -144,7 +153,8 @@ export function FormPolicyEditor({
       {collaboratorMessage && <small role="status">{collaboratorMessage}</small>}
     </section>
     <section>
-      <h3><Settings2/> 외부 연동</h3>
+      <h3><Settings2/> 외부 연동 <span className="optional-badge">선택</span></h3>
+      <p className="section-help">새 응답이 들어올 때 다른 서비스로 응답 데이터를 자동 전송하는 개발자용 기능입니다. 별도 연동이 필요 없다면 비워 두세요.</p>
       <label>Google Sheets Apps Script 웹앱 URL<input type="url" value={value.integrations.sheetsWebhookUrl ?? ''} onChange={(event) => updateIntegrations({ sheetsWebhookUrl: event.target.value })} placeholder="https://script.google.com/macros/s/.../exec"/></label>
       <label>일반 웹훅 URL<input type="url" value={value.integrations.webhookUrl ?? ''} onChange={(event) => updateIntegrations({ webhookUrl: event.target.value })} placeholder="https://example.com/hooks/daepul"/></label>
       <small>새 응답을 HTTPS POST로 전달합니다. 전송 상태와 실패 사유는 서버의 integrationDeliveries 기록에 보관됩니다.</small>

@@ -6,7 +6,7 @@ import {
   sendSignInLinkToEmail, setPersistence, signInAnonymously, signInWithEmailLink, signInWithPopup, signInWithRedirect, signOut, type User,
 } from 'firebase/auth'
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
-import { Timestamp, collection, deleteDoc, doc, getDoc, getDocs, getFirestore, limit, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
+import { Timestamp, collection, deleteDoc, doc, getDoc, getDocs, initializeFirestore, limit, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage'
 import {
@@ -49,7 +49,7 @@ if (firebaseApp && import.meta.env.DEV) {
 }
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null
-export const db = firebaseApp ? getFirestore(firebaseApp) : null
+export const db = firebaseApp ? initializeFirestore(firebaseApp, { ignoreUndefinedProperties: true }) : null
 export const formService = createFormService(firebaseApp)
 const functions = firebaseApp ? getFunctions(firebaseApp, 'asia-northeast3') : null
 const storage = firebaseApp ? getStorage(firebaseApp) : null
@@ -649,6 +649,30 @@ const formSchema = Schema.object({ properties: {
     required: Schema.boolean(), options: Schema.array({ items: Schema.string() }),
   }, optionalProperties: ['options'] }) }),
   reviewNotes: Schema.array({ items: Schema.string() }),
+  suggestedTheme: Schema.enumString({ enum: ['green', 'spring', 'summer', 'autumn', 'winter', 'kangnam'] }),
+  suggestedEndDate: Schema.string(),
+  suggestedSettings: Schema.object({ properties: {
+    publicSlug: Schema.string(),
+    participation: Schema.enumString({ enum: ['anyone', 'authenticated', 'kangnam', 'allowlist'] }),
+    identityCollection: Schema.enumString({ enum: ['anonymous', 'profile', 'email_input', 'verified_email'] }),
+    allowMultiple: Schema.boolean(),
+    status: Schema.enumString({ enum: ['draft', 'scheduled', 'open', 'paused', 'closed', 'private'] }),
+    startsAt: Schema.string(),
+    closesAt: Schema.string(),
+    maxResponses: Schema.integer(),
+    allowDrafts: Schema.boolean(),
+    allowEditAfterSubmit: Schema.boolean(),
+    emailReceipt: Schema.boolean(),
+    showOwnResponse: Schema.boolean(),
+    showPublicResults: Schema.boolean(),
+    randomizeQuestions: Schema.boolean(),
+    submitLabel: Schema.string(),
+    completionMessage: Schema.string(),
+    icon: Schema.enumString({ enum: ['calendar', 'clipboard', 'graduation', 'heart', 'none'] }),
+    shareTitle: Schema.string(),
+    shareDescription: Schema.string(),
+    newResponseEmail: Schema.boolean(),
+  }}),
 } })
 
 function fileToBase64(file: File) {
@@ -674,7 +698,13 @@ export async function generateFormFromDocuments(files: File[], memo: string): Pr
       throw new Error(`HWP 파일 "${file.name}"을 읽지 못했습니다. 손상되었거나 암호가 설정된 파일인지 확인해 주세요.`)
     }
   }))
-  const prompt = `첨부 자료를 읽고 실제 내용에 맞는 한국어 폼을 설계하세요. 만족도 조사라면 1~5점 rating과 자유의견을 포함하고, 신청서라면 신청 자격·일정·선발에 필요한 질문을 만드세요. 문서에 없는 사실은 만들지 말고 빈 문자열 또는 reviewNotes로 남기세요. 개인정보 질문은 꼭 필요한 최소한만 만드세요. 메모: ${memo || '없음'}`
+  const prompt = `첨부 자료를 읽고 실제 내용에 맞는 한국어 폼과 배포 설정을 함께 설계하세요.
+만족도 조사라면 1~5점 rating과 자유의견을 포함하고, 신청서라면 신청 자격·일정·선발에 필요한 질문을 만드세요.
+suggestedSettings에는 문서에 근거해 참여 정책, 응답자 정보, 접수 일정, 최대 응답 수, 제출 후 동작, 공유 제목·설명을 추천하세요.
+publicSlug는 폼 제목을 설명하는 짧은 영문 소문자·숫자·하이픈 주소로 만드세요. 날짜는 문서에 있으면 startsAt/closesAt에 ISO 형식으로, suggestedEndDate에는 YYYY-MM-DD로 적으세요.
+강남대학교 공식 행사·사업이면 suggestedTheme은 kangnam, 계절성이 명확하면 해당 계절, 아니면 green을 사용하세요.
+문서에 없는 사실은 만들지 말고 문자열은 빈 값, 숫자는 0, 보수적인 기본값을 사용한 뒤 reviewNotes에 확인할 내용을 남기세요.
+개인정보 질문은 꼭 필요한 최소한만 만드세요. 메모: ${memo || '없음'}`
   const result = await model.generateContent([...parts, { text: prompt }])
   const parsed = JSON.parse(result.response.text()) as Omit<GeneratedForm, 'questions'> & { questions: Array<Omit<FormQuestion, 'id'>> }
   return { ...parsed, questions: parsed.questions.map((question, index) => ({ ...question, id: Date.now() + index })) }

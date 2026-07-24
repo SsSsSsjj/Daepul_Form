@@ -157,6 +157,30 @@ export interface GeneratedForm {
   program: ProgramInfo
   questions: FormQuestion[]
   reviewNotes: string[]
+  suggestedTheme: 'green' | 'spring' | 'summer' | 'autumn' | 'winter' | 'kangnam'
+  suggestedEndDate: string
+  suggestedSettings: {
+    publicSlug: string
+    participation: ParticipationPolicy
+    identityCollection: IdentityCollection
+    allowMultiple: boolean
+    status: FormLifecycleStatus
+    startsAt: string
+    closesAt: string
+    maxResponses: number
+    allowDrafts: boolean
+    allowEditAfterSubmit: boolean
+    emailReceipt: boolean
+    showOwnResponse: boolean
+    showPublicResults: boolean
+    randomizeQuestions: boolean
+    submitLabel: string
+    completionMessage: string
+    icon: NonNullable<FormBrandingSettings['icon']>
+    shareTitle: string
+    shareDescription: string
+    newResponseEmail: boolean
+  }
 }
 
 export interface StoredFormResponse {

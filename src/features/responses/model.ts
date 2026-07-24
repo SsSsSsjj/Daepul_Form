@@ -2,12 +2,52 @@ import {
   defaultFormSettings,
   type FormQuestion,
   type FormSettings,
+  type GeneratedForm,
   type KeywordInsight,
   type ResponseFilters,
   type ResponsePage,
   type ResponseQuery,
   type StoredFormResponse,
 } from '../../types'
+
+export function settingsFromAiSuggestion(suggestion: GeneratedForm['suggestedSettings']): FormSettings {
+  const publicSlug = suggestion.publicSlug.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+  const startsAt = suggestion.startsAt && !Number.isNaN(Date.parse(suggestion.startsAt)) ? new Date(suggestion.startsAt).toISOString() : undefined
+  const closesAt = suggestion.closesAt && !Number.isNaN(Date.parse(suggestion.closesAt)) ? new Date(suggestion.closesAt).toISOString() : undefined
+  return normalizeFormSettings({
+    ...defaultFormSettings,
+    publicSlug,
+    access: {
+      ...defaultFormSettings.access,
+      participation: suggestion.participation,
+      identityCollection: suggestion.identityCollection,
+      allowMultiple: suggestion.allowMultiple,
+    },
+    schedule: { status: suggestion.status, startsAt, closesAt },
+    submission: {
+      ...defaultFormSettings.submission,
+      allowDrafts: suggestion.allowDrafts,
+      allowEditAfterSubmit: suggestion.allowEditAfterSubmit,
+      emailReceipt: suggestion.emailReceipt && suggestion.identityCollection !== 'anonymous',
+      showOwnResponse: suggestion.showOwnResponse,
+      showPublicResults: suggestion.showPublicResults,
+      randomizeQuestions: suggestion.randomizeQuestions,
+      submitLabel: suggestion.submitLabel.trim() || defaultFormSettings.submission.submitLabel,
+      completionMessage: suggestion.completionMessage.trim() || defaultFormSettings.submission.completionMessage,
+      maxResponses: suggestion.maxResponses > 0 ? suggestion.maxResponses : undefined,
+    },
+    branding: {
+      ...defaultFormSettings.branding,
+      icon: suggestion.icon,
+      shareTitle: suggestion.shareTitle.trim(),
+      shareDescription: suggestion.shareDescription.trim(),
+    },
+    notifications: {
+      ...defaultFormSettings.notifications,
+      newResponseEmail: suggestion.newResponseEmail,
+    },
+  })
+}
 
 export type PublicFormAvailability =
   | { state: 'open'; message: string }

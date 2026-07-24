@@ -6,6 +6,7 @@ import {
   getFormAvailability,
   queryResponses,
   responsesToCsv,
+  settingsFromAiSuggestion,
   validateAnswers,
 } from './model'
 
@@ -100,5 +101,69 @@ describe('public response model', () => {
     expect(extractKeywordInsights(responses, textQuestions)).toEqual([
       { keyword: '멘토링', count: 3, responseCount: 2 },
     ])
+  })
+})
+
+describe('AI publish-setting suggestions', () => {
+  it('maps document-grounded suggestions into editable publish settings', () => {
+    const settings = settingsFromAiSuggestion({
+      publicSlug: ' Career Camp 2026! ',
+      participation: 'kangnam',
+      identityCollection: 'verified_email',
+      allowMultiple: false,
+      status: 'scheduled',
+      startsAt: '2026-08-01T09:00:00+09:00',
+      closesAt: '2026-08-10T18:00:00+09:00',
+      maxResponses: 80,
+      allowDrafts: true,
+      allowEditAfterSubmit: false,
+      emailReceipt: true,
+      showOwnResponse: true,
+      showPublicResults: false,
+      randomizeQuestions: false,
+      submitLabel: '캠프 신청하기',
+      completionMessage: '신청이 완료되었습니다.',
+      icon: 'graduation',
+      shareTitle: '강남대학교 커리어 캠프',
+      shareDescription: '재학생 대상 커리어 캠프 참가자를 모집합니다.',
+      newResponseEmail: true,
+    })
+
+    expect(settings.publicSlug).toBe('career-camp-2026')
+    expect(settings.access.participation).toBe('kangnam')
+    expect(settings.schedule.status).toBe('scheduled')
+    expect(settings.schedule.startsAt).toBe('2026-08-01T00:00:00.000Z')
+    expect(settings.submission.maxResponses).toBe(80)
+    expect(settings.submission.submitLabel).toBe('캠프 신청하기')
+    expect(settings.branding.shareTitle).toBe('강남대학교 커리어 캠프')
+    expect(settings.notifications.newResponseEmail).toBe(true)
+  })
+
+  it('keeps anonymous forms from enabling email receipts', () => {
+    const settings = settingsFromAiSuggestion({
+      publicSlug: '',
+      participation: 'anyone',
+      identityCollection: 'anonymous',
+      allowMultiple: true,
+      status: 'open',
+      startsAt: '',
+      closesAt: '',
+      maxResponses: 0,
+      allowDrafts: false,
+      allowEditAfterSubmit: false,
+      emailReceipt: true,
+      showOwnResponse: false,
+      showPublicResults: true,
+      randomizeQuestions: false,
+      submitLabel: '',
+      completionMessage: '',
+      icon: 'clipboard',
+      shareTitle: '',
+      shareDescription: '',
+      newResponseEmail: false,
+    })
+
+    expect(settings.submission.emailReceipt).toBe(false)
+    expect(settings.submission.maxResponses).toBeUndefined()
   })
 })
