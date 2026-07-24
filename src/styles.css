@@ -77,3 +77,25 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @media(max-width:760px){.policy-editor .grid.two,.identity-fields{grid-template-columns:1fr}.share-action-grid{grid-template-columns:1fr}.actions-inline{width:100%;display:grid;grid-template-columns:1fr 1fr}.result-dashboard-head,.result-commandbar{align-items:stretch;flex-direction:column}.result-dashboard-head .stat{width:100%}.result-tabs{display:grid;grid-template-columns:repeat(4,1fr)}.result-tabs button{padding:9px 6px;flex-direction:column;font-size:11px}.result-actions{display:grid;grid-template-columns:repeat(3,1fr)}.result-filters{align-items:stretch;flex-direction:column}.result-filters label{width:100%}.individual-toolbar{display:grid;grid-template-columns:auto 1fr auto}.individual-toolbar label{min-width:0}.individual-toolbar select{width:100%;min-width:0}.individual-toolbar>button:last-child{grid-column:1/-1}.identity-grid{grid-template-columns:1fr}.response-table-shell{height:auto;overflow:visible;border:0;background:transparent}.response-table{min-width:0!important}.response-header{display:none}.response-row{position:relative!important;transform:none!important;height:auto!important;display:block!important;margin-bottom:10px;padding:14px;border:1px solid #dbe4e1;border-radius:12px}.response-row>span{display:block;position:static!important;padding:5px 0;white-space:normal}.response-row>span:first-child{font-weight:800;color:var(--accent)}.pagination{justify-content:center}.manage-actions{grid-column:1/-1}.manage-actions button{width:auto!important}}
 @media print{body>*{visibility:hidden}.printable-response,.printable-response *{visibility:visible}.printable-response{position:absolute;inset:0;width:100%;border:0;box-shadow:none}.individual-toolbar{display:none}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* Kangnam University co-branding */
+.university-brand{align-items:center;gap:10px;padding:4px 0;text-align:left}
+.university-brand img{width:43px;height:43px;object-fit:contain;flex:0 0 auto}
+.university-brand>span{display:flex;flex-direction:column;line-height:1.08}
+.university-brand b{font-size:19px;letter-spacing:-.7px;color:#111d2d;white-space:nowrap}
+.university-brand small{margin-top:3px;font-size:8px;line-height:1;letter-spacing:.25px;color:#111d2d;white-space:nowrap}
+.university-brand>i{width:1px;height:37px;background:#cad2d8;margin:0 2px;flex:0 0 auto}
+.university-brand .service-name b{font-size:16px;color:#173c5f}
+.university-brand .service-name small{color:#617080;letter-spacing:.8px}
+@media(max-width:760px){
+  .university-brand{gap:7px}
+  .university-brand img{width:36px;height:36px}
+  .university-brand .university-name small,.university-brand .service-name small{display:none}
+  .university-brand .university-name b{font-size:16px}
+  .university-brand .service-name b{font-size:14px}
+  .university-brand>i{height:28px}
+}
+@media(max-width:430px){
+  .university-brand .university-name{display:none}
+  .university-brand>i{display:none}
+}
