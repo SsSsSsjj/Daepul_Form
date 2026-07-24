@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Scan tracked files for exposed secrets
+        run: npm run security:scan
+
       - name: Validate Firebase App Check configuration
         run: test -n "$VITE_FIREBASE_APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY"
         env:
