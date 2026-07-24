@@ -144,6 +144,8 @@ export interface FormQuestion {
   optionImageUrls?: string[]
   maxSelections?: number
   sectionId?: string
+  sectionTitle?: string
+  sectionNext?: string | 'submit'
   description?: string
   min?: number
   max?: number
