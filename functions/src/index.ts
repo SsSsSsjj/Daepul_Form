@@ -21,7 +21,7 @@ import {
 } from './auth/core'
 import { buildAuthorizationUrl, exchangeCodeForProfile, type ProviderCredentials } from './auth/providers'
 import { FirestoreOAuthSessionRepository, OAuthSessionService } from './auth/sessions'
-import { createFormCallables } from './forms'
+import { createFormCallables, scoreQuizAnswers } from './forms'
 
 type Response = Parameters<Parameters<typeof onRequest>[0]>[1]
 
@@ -282,10 +282,14 @@ export const submitFormResponse = onCall({
 
   const database = getFirestore()
   const formRef = database.doc(`forms/${formId}`)
+  const quizConfigRef = formRef.collection('quiz').doc('config')
   const provider = stringValue(authContext.token.firebase?.sign_in_provider)
   const anonymous = provider === 'anonymous'
   const result = await database.runTransaction(async (transaction) => {
-    const formSnapshot = await transaction.get(formRef)
+    const [formSnapshot, quizConfigSnapshot] = await Promise.all([
+      transaction.get(formRef),
+      transaction.get(quizConfigRef),
+    ])
     if (!formSnapshot.exists) throw new HttpsError('not-found', '폼을 찾을 수 없습니다.')
     const form = formSnapshot.data() ?? {}
     const settings = form.settings as Record<string, Record<string, unknown>> | undefined
@@ -326,6 +330,10 @@ export const submitFormResponse = onCall({
     const responseEmail = settings?.access?.identityCollection === 'verified_email'
       ? stringValue(authContext.token.email)
       : stringValue(payload.respondentEmail)
+    const quizResult = scoreQuizAnswers(
+      quizConfigSnapshot.exists ? quizConfigSnapshot.data() ?? {} : {},
+      answers,
+    )
     transaction.create(responseRef, {
       responseId,
       formId,
@@ -358,6 +366,7 @@ export const submitFormResponse = onCall({
       submittedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       immutable: settings?.submission?.allowEditAfterSubmit !== true,
+      ...(quizResult ? { quizResult } : {}),
     })
     if (maximum > 0 && currentCount + 1 >= maximum) {
       transaction.update(formRef, {
@@ -391,7 +400,13 @@ export const submitFormResponse = onCall({
         respondentName: stringValue(payload.respondentName),
         studentId: stringValue(payload.studentId, 40),
         answers,
+        ...(quizResult ? { quizResult: {
+          score: quizResult.score,
+          maxScore: quizResult.maxScore,
+          percentage: quizResult.percentage,
+        } } : {}),
       },
+      quizResult,
     }
   })
   const mail = database.collection('mail')
@@ -434,7 +449,19 @@ export const submitFormResponse = onCall({
     }))
   }
   await Promise.allSettled(deliveries)
-  return { responseId: result.responseId }
+  return {
+    responseId: result.responseId,
+    quizResult: result.quizResult
+      ? result.quizResult.released
+        ? result.quizResult
+        : {
+            score: 0,
+            maxScore: result.quizResult.maxScore,
+            percentage: 0,
+            released: false,
+          }
+      : undefined,
+  }
 })
 
 function safeIntegrationUrl(value: unknown) {
@@ -506,6 +533,7 @@ type ManagedResponse = {
   status: string
   formVersion: number
   attachments: unknown[]
+  quizResult?: Record<string, unknown>
 }
 
 const responseCallableOptions = {
@@ -554,6 +582,7 @@ function serializeManagedResponse(
     status: stringValue(data.status, 20) || 'submitted',
     formVersion: Number(data.formVersion ?? 1),
     attachments: Array.isArray(data.attachments) ? data.attachments : [],
+    ...(data.quizResult && typeof data.quizResult === 'object' ? { quizResult: data.quizResult as Record<string, unknown> } : {}),
   }
 }
 
@@ -741,8 +770,16 @@ export const getOwnFormResponse = onCall(responseCallableOptions, async (request
     throw new HttpsError('permission-denied', '답변 확인이 허용되지 않았습니다.')
   }
   const response = await findOwnResponse(formId, request.auth.uid)
+  const serialized = response ? serializeManagedResponse(response.id, formId, response.data() ?? {}) : null
+  if (serialized?.quizResult) {
+    const quizConfig = await getFirestore().doc(`forms/${formId}/quiz/config`).get()
+    serialized.quizResult = {
+      ...serialized.quizResult,
+      released: quizConfig.data()?.releaseScore !== 'later',
+    }
+  }
   return {
-    response: response ? serializeManagedResponse(response.id, formId, response.data() ?? {}) : null,
+    response: serialized,
   }
 })
 
@@ -764,6 +801,11 @@ export const updateOwnFormResponse = onCall(responseCallableOptions, async (requ
   validateAnswersAgainstQuestions(form.questions, answers)
   const response = await findOwnResponse(formId, request.auth.uid)
   if (!response) throw new HttpsError('not-found', '제출한 응답을 찾을 수 없습니다.')
+  const quizConfigSnapshot = await database.doc(`forms/${formId}/quiz/config`).get()
+  const quizResult = scoreQuizAnswers(
+    quizConfigSnapshot.exists ? quizConfigSnapshot.data() ?? {} : {},
+    answers,
+  )
   await response.ref.update({
     answers,
     respondentName: stringValue(request.data?.respondentName),
@@ -772,8 +814,17 @@ export const updateOwnFormResponse = onCall(responseCallableOptions, async (requ
       ? stringValue(request.auth.token.email)
       : stringValue(request.data?.respondentEmail),
     updatedAt: FieldValue.serverTimestamp(),
+    ...(quizResult ? { quizResult } : {}),
   })
-  return { responseId: response.id }
+  return {
+    responseId: response.id,
+    quizResult: quizResult?.released ? quizResult : quizResult ? {
+      score: 0,
+      maxScore: quizResult.maxScore,
+      percentage: 0,
+      released: false,
+    } : undefined,
+  }
 })
 
 export const getPublicResultSummary = onCall(responseCallableOptions, async (request) => {
@@ -822,6 +873,47 @@ export const setFormCollaborator = onCall(responseCallableOptions, async (reques
     updatedAt: FieldValue.serverTimestamp(),
   })
   return { uid: collaborator.uid, email, role }
+})
+
+export const listOrganizationForms = onCall(responseCallableOptions, async (request) => {
+  if (!request.auth || request.auth.token.firebase?.sign_in_provider === 'anonymous') {
+    throw new HttpsError('unauthenticated', '조직 공유 공간은 로그인한 사용자만 이용할 수 있습니다.')
+  }
+  const email = stringValue(request.auth.token.email, 320).toLowerCase()
+  const emailDomain = email.split('@')[1] ?? ''
+  if (!emailDomain || request.auth.token.email_verified !== true) {
+    throw new HttpsError('permission-denied', '인증된 이메일 계정이 필요합니다.')
+  }
+  const snapshot = await getFirestore()
+    .collection('forms')
+    .where('settings.workspace.emailDomain', '==', emailDomain)
+    .limit(100)
+    .get()
+  const forms = snapshot.docs
+    .filter((item) => {
+      const data = item.data()
+      return data.deletedAt == null
+        && data.settings?.workspace?.enabled === true
+        && data.ownerUid !== request.auth?.uid
+    })
+    .map((item) => {
+      const data = item.data()
+      return {
+        id: item.id,
+        title: stringValue(data.program?.programName) || '제목 없는 폼',
+        published: data.published === true,
+        status: stringValue(data.settings?.schedule?.status) || 'draft',
+        startsAt: stringValue(data.settings?.schedule?.startsAt),
+        closesAt: stringValue(data.settings?.schedule?.closesAt),
+        maxResponses: Number(data.settings?.submission?.maxResponses ?? 0),
+        publicSlug: stringValue(data.settings?.publicSlug),
+        responseCount: Number(data.responseCount ?? 0),
+        workspaceName: stringValue(data.settings?.workspace?.name) || emailDomain,
+        ownerEmail: stringValue(data.ownerEmail),
+        organizationShared: true,
+      }
+    })
+  return { forms, emailDomain }
 })
 
 export const getFormDeliveryStatus = onCall(responseCallableOptions, async (request) => {

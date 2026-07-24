@@ -122,6 +122,10 @@ service cloud.firestore {
           && request.resource.data.createdBy == request.auth.uid;
         allow update, delete: if false;
       }
+
+      match /quiz/{documentId} {
+        allow read, write: if canEditForm(formId);
+      }
     }
 
     match /formDrafts/{draftId} {

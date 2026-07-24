@@ -29,6 +29,18 @@ export interface FormSubmissionSettings {
   maxResponses?: number
 }
 
+export interface FormQuizSettings {
+  enabled: boolean
+  releaseScore: 'immediately' | 'later'
+  showCorrectAnswers: boolean
+}
+
+export interface FormWorkspaceSettings {
+  enabled: boolean
+  name: string
+  emailDomain: string
+}
+
 export interface FormScheduleSettings {
   status: FormLifecycleStatus
   startsAt?: string
@@ -44,6 +56,9 @@ export interface FormBrandingSettings {
   shareTitle?: string
   shareDescription?: string
   shareImageUrl?: string
+  fontPreset?: 'system' | 'serif' | 'rounded' | 'custom'
+  customFontFamily?: string
+  customFontUrl?: string
 }
 
 export interface FormSettings {
@@ -61,6 +76,8 @@ export interface FormSettings {
     sheetsWebhookUrl?: string
     webhookUrl?: string
   }
+  quiz: FormQuizSettings
+  workspace: FormWorkspaceSettings
   publicSlug?: string
   version: number
 }
@@ -85,6 +102,16 @@ export const defaultFormSettings: FormSettings = {
   },
   schedule: { status: 'open' },
   branding: { theme: 'green', icon: 'clipboard' },
+  quiz: {
+    enabled: false,
+    releaseScore: 'immediately',
+    showCorrectAnswers: true,
+  },
+  workspace: {
+    enabled: false,
+    name: '',
+    emailDomain: 'kangnam.ac.kr',
+  },
   notifications: {
     newResponseEmail: false,
     startEmail: false,
@@ -119,6 +146,10 @@ export interface FormQuestion {
   pattern?: string
   branch?: Record<string, string | 'submit'>
   randomizeOptions?: boolean
+  points?: number
+  correctAnswers?: Array<string | number | boolean>
+  correctFeedback?: string
+  incorrectFeedback?: string
 }
 
 export interface GeneratedForm {
@@ -143,6 +174,24 @@ export interface StoredFormResponse {
   status?: ResponseStatus
   formVersion?: number
   attachments?: ResponseAttachment[]
+  quizResult?: QuizResult
+}
+
+export interface QuizQuestionResult {
+  questionId: number
+  earnedPoints: number
+  possiblePoints: number
+  correct: boolean
+  correctAnswers?: Array<string | number | boolean>
+  feedback?: string
+}
+
+export interface QuizResult {
+  score: number
+  maxScore: number
+  percentage: number
+  released: boolean
+  questions?: QuizQuestionResult[]
 }
 
 export interface ResponseAttachment {
@@ -224,6 +273,12 @@ export interface ResponseTopic {
   summary: string
   sourceIds: number[]
   reportSentence: string
+}
+
+export interface KeywordInsight {
+  keyword: string
+  count: number
+  responseCount: number
 }
 
 // Stable domain contract consumed by the server-side form API and parallel UI work.

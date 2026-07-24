@@ -10,7 +10,7 @@ import {
   manageFormResponses, queryFormResponses, restoreFormRecord, retryFormDelivery, saveAnalysisRecord, saveResponseDraft, setFormCollaborator, signInAsGuest, signInWithGoogle, summarizeResponses,
   submitResponseOnce, updateFormLifecycle, updateFormSchedule, updateOwnResponse, uploadResponseAttachment, type FirebaseUser, type LoginProvider,
 } from './firebase'
-import { defaultFormSettings, type AnswerValue, type FormQuestion, type FormSettings, type FormType, type ProgramInfo, type QuestionSummary, type ResponseAttachment, type ResponsePage, type ResponseQuery, type StoredFormResponse } from './types'
+import { defaultFormSettings, type AnswerValue, type FormQuestion, type FormSettings, type FormType, type ProgramInfo, type QuestionSummary, type QuizResult, type ResponseAttachment, type ResponsePage, type ResponseQuery, type StoredFormResponse } from './types'
 import { ResultsDashboard } from './features/responses/ResultsDashboard'
 import { FormPolicyEditor } from './features/responses/FormPolicyEditor'
 import { createSampleResponses, getFormAvailability, normalizeFormSettings, validateAnswers } from './features/responses/model'
@@ -18,7 +18,7 @@ import { createSampleResponses, getFormAvailability, normalizeFormSettings, vali
 type Page = 'create' | 'edit' | 'publish' | 'results' | 'manage'
 type Theme = 'green' | 'spring' | 'summer' | 'autumn' | 'winter' | 'blue' | 'coral'
 type SelectableTheme = Exclude<Theme, 'blue' | 'coral'>
-type OwnedForm = { id: string; title: string; published: boolean; responseCount: number; status?: string; startsAt?: string; closesAt?: string; maxResponses?: number; publicSlug?: string }
+type OwnedForm = { id: string; title: string; published: boolean; responseCount: number; status?: string; startsAt?: string; closesAt?: string; maxResponses?: number; publicSlug?: string; organizationShared?: boolean; workspaceName?: string; ownerEmail?: string }
 type DeletedForm = { id: string; title: string; deletedAt: string }
 type EmailLinkMode = 'none' | 'checking' | 'needs-email'
 type SubmissionStatus = 'checking' | 'ready' | 'submitted-now' | 'already-submitted' | 'check-error'
@@ -313,6 +313,9 @@ export default function App() {
   const publish = async () => {
     if (!user) return
     if (!program.programName || !questions.length) { setMessage('폼 제목과 질문을 확인해 주세요.'); return }
+    if(formSettings.quiz.enabled&&!questions.some(question=>(question.points??0)>0&&(question.correctAnswers?.length??0)>0)){setMessage('퀴즈 모드에는 정답과 1점 이상의 배점이 설정된 문항이 필요합니다. 폼 수정 화면에서 설정해 주세요.');return}
+    if(formSettings.workspace.enabled&&(!formSettings.workspace.name.trim()||!formSettings.workspace.emailDomain.includes('.'))){setMessage('조직 공유 공간 이름과 올바른 이메일 도메인을 입력해 주세요.');return}
+    if(formSettings.branding.fontPreset==='custom'&&(!formSettings.branding.customFontFamily||!formSettings.branding.customFontUrl?.startsWith('https://'))){setMessage('사용자 글꼴 이름과 HTTPS CSS 주소를 입력해 주세요.');return}
     setPublishLoading(true); setMessage('')
     try {
       const publishedFormId = await publishFormRecord({
@@ -333,6 +336,10 @@ export default function App() {
     finally { setPublishLoading(false) }
   }
   const loadResults = async (targetFormId = formId) => {
+    if (ownedForms.find((form)=>form.id===targetFormId)?.organizationShared) {
+      setMessage('조직 공유 폼은 공개 응답 화면에서 확인할 수 있습니다. 결과 접근은 소유자가 공동 편집 권한을 부여해야 합니다.')
+      return
+    }
     setResultLoading(true); setMessage(''); setSampleResults(false)
     try {
       const form = targetFormId === formId ? { program, questions, formType, theme, surveyEndDate: endDate, settings: formSettings } : await getPublishedForm(targetFormId, true)
@@ -355,6 +362,7 @@ export default function App() {
     try { const [active,deleted]=await Promise.all([getOwnedForms(user.uid),getDeletedForms(user.uid)]);setOwnedForms(active);setDeletedForms(deleted) } catch { setMessage('내 폼 목록을 불러오지 못했습니다.') } finally { setResultLoading(false) }
   }
   const deleteOwnedForm = async (form: OwnedForm) => {
+    if(form.organizationShared){setMessage('조직 공유 폼은 소유자만 삭제할 수 있습니다.');return}
     if (!window.confirm(`“${form.title}” 폼을 휴지통으로 이동할까요?\n응답 ${form.responseCount}건은 보존되며 복구할 수 있습니다.`)) return
     setDeletingFormId(form.id); setMessage('')
     try {
@@ -412,6 +420,7 @@ export default function App() {
     setPage('results')
   }
   const toggleFormReception = async (form: OwnedForm) => {
+    if(form.organizationShared){setMessage('조직 공유 폼의 접수 상태는 소유자 또는 편집자만 변경할 수 있습니다.');return}
     const nextStatus = form.status === 'open' ? 'paused' : 'open'
     setMessage('')
     try {
@@ -425,6 +434,7 @@ export default function App() {
     }
   }
   const editFormCloseTime = async (form: OwnedForm) => {
+    if(form.organizationShared){setMessage('조직 공유 폼의 마감 시각은 소유자 또는 편집자만 변경할 수 있습니다.');return}
     const current = form.closesAt ? new Date(form.closesAt).toISOString().slice(0, 16) : ''
     const value = window.prompt('새 마감 시각을 YYYY-MM-DDTHH:mm 형식으로 입력하세요. 비우면 마감 시각을 제거합니다.', current)
     if (value === null) return
@@ -480,7 +490,7 @@ export default function App() {
     <header><button className="brand university-brand" aria-label="강남대학교 대플폼 홈" onClick={startNewForm}><img src={kangnamUniversityLogo} alt="강남대학교"/><span className="university-name"><b>강남대학교</b><small>KANGNAM UNIVERSITY</small></span><i aria-hidden="true"/><span className="service-name"><b>대플폼</b><small>AI FORM BUILDER</small></span></button><nav><button onClick={startNewForm}>새 폼</button><button onClick={() => void openManage()}>내 폼 관리</button><div className="user-menu"><button className="avatar" onClick={() => setMenuOpen(!menuOpen)}>{user.displayName?.[0] ?? 'U'} <ChevronDown size={14}/></button>{menuOpen && <div className="menu"><strong>{user.displayName}</strong><small>{user.email}</small><button onClick={() => void openManage()}><LayoutDashboard size={16}/> 내 폼 관리</button><button onClick={() => void doLogout()}><LogOut size={16}/> 로그아웃</button></div>}</div></nav></header>
     <main id="main-content">
       {page === 'create' && <section><Title step="1" title="자료를 읽고 폼을 만듭니다" text="PDF·PNG·JPG·HWP 참고문서와 담당자 메모를 Gemini가 함께 분석합니다."/><div className="grid two"><div className="card"><h2>참고문서</h2><div className={`drop ${dragging ? 'dragging' : ''}`} onClick={() => fileRef.current?.click()} onDragOver={(e) => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}><Upload/><b>파일을 선택하거나 끌어 놓으세요</b><span>PDF, PNG, JPG, HWP, HWPX · 최대 5개</span><input ref={fileRef} hidden type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.hwp,.hwpx" onChange={onFiles}/></div>{files.map((file, i) => <div className="file" key={`${file.name}-${i}`}><FileText size={16}/><span>{file.name}</span><button onClick={() => setFiles(files.filter((_, index) => index !== i))}><Trash2 size={15}/></button></div>)}</div><div className="card"><h2>담당자 메모</h2><textarea value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 이 자료는 행사 만족도 조사입니다. 익명으로 받고 개선 의견을 자세히 물어봐 주세요."/><small>문서와 메모가 함께 AI 분석에 반영됩니다.</small></div></div>{analysisError && <Notice text={analysisError}/>}<div className="actions"><button className="primary" onClick={() => void analyze()} disabled={analysisLoading}>{analysisLoading ? <LoaderCircle className="spin"/> : <WandSparkles/>}{analysisLoading ? '문서를 읽는 중...' : 'AI로 폼 만들기'}</button></div></section>}
-      {page === 'edit' && <section><Title step="2" title="AI가 만든 폼을 확인하세요" text="문서에서 확실하지 않은 내용은 검토 항목으로 표시합니다."/>{reviewNotes.length > 0 && <div className="notice warn"><b>사람이 확인할 항목</b>{reviewNotes.map((note) => <span key={note}>• {note}</span>)}</div>}<div className="grid edit"><div><div className="card form-fields"><h2>폼 기본 정보</h2><label>폼 제목<input value={program.programName} onChange={(e) => setProgram({...program, programName:e.target.value})}/></label><label>설명<textarea value={program.description} onChange={(e) => setProgram({...program, description:e.target.value})}/></label><div className="grid two"><label>대상<input value={program.target} onChange={(e) => setProgram({...program, target:e.target.value})}/></label><label>기간<input value={program.period} onChange={(e) => setProgram({...program, period:e.target.value})}/></label></div></div><div className="card"><div className="row"><h2>질문 {questions.length}개</h2><button onClick={() => setQuestions([...questions,{id:Date.now(),label:'새 질문',type:'short_text',required:false}])}><Plus size={16}/> 질문 추가</button></div>{questions.map((q) => <div className="question" key={q.id}><input value={q.label} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,label:e.target.value}:item))}/><select value={q.type} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,type:e.target.value as FormQuestion['type']}:item))}>{Object.entries(typeLabels).map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select><label className="check"><input type="checkbox" checked={q.required} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,required:e.target.checked}:item))}/>필수</label><button onClick={() => setQuestions(questions.filter((item) => item.id!==q.id))}><Trash2 size={16}/></button></div>)}</div></div><aside className="card preview"><h2>미리보기</h2><FormBody program={program} questions={questions} theme={theme} branding={formSettings.branding}/></aside></div><div className="actions between"><button onClick={() => setPage('create')}>자료 다시 선택</button><button className="primary" onClick={() => setPage('publish')}>디자인·배포 설정</button></div></section>}
+      {page === 'edit' && <section><Title step="2" title="AI가 만든 폼을 확인하세요" text="문서에서 확실하지 않은 내용은 검토 항목으로 표시합니다."/>{reviewNotes.length > 0 && <div className="notice warn"><b>사람이 확인할 항목</b>{reviewNotes.map((note) => <span key={note}>• {note}</span>)}</div>}<div className="grid edit"><div><div className="card form-fields"><h2>폼 기본 정보</h2><label>폼 제목<input value={program.programName} onChange={(e) => setProgram({...program, programName:e.target.value})}/></label><label>설명<textarea value={program.description} onChange={(e) => setProgram({...program, description:e.target.value})}/></label><div className="grid two"><label>대상<input value={program.target} onChange={(e) => setProgram({...program, target:e.target.value})}/></label><label>기간<input value={program.period} onChange={(e) => setProgram({...program, period:e.target.value})}/></label></div></div><div className="card"><div className="row"><h2>질문 {questions.length}개</h2><button onClick={() => setQuestions([...questions,{id:Date.now(),label:'새 질문',type:'short_text',required:false}])}><Plus size={16}/> 질문 추가</button></div>{questions.map((q) => <div className="question" key={q.id}><input value={q.label} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,label:e.target.value}:item))}/><select value={q.type} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,type:e.target.value as FormQuestion['type']}:item))}>{Object.entries(typeLabels).map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select><label className="check"><input type="checkbox" checked={q.required} onChange={(e) => setQuestions(questions.map((item) => item.id===q.id?{...item,required:e.target.checked}:item))}/>필수</label><button onClick={() => setQuestions(questions.filter((item) => item.id!==q.id))}><Trash2 size={16}/></button></div>)}{formSettings.quiz.enabled&&<QuizConfiguration questions={questions} onChange={setQuestions}/>}</div></div><aside className="card preview"><h2>미리보기</h2><FormBody program={program} questions={questions} theme={theme} branding={formSettings.branding}/></aside></div><div className="actions between"><button onClick={() => setPage('create')}>자료 다시 선택</button><button className="primary" onClick={() => setPage('publish')}>디자인·배포 설정</button></div></section>}
       {page === 'publish' && <section><Title step="3" title="디자인과 참여 정책을 설정하세요" text="참여 대상, 접수 일정, 제출 후 동작을 정한 뒤 공개 링크를 생성합니다."/><div className="grid two"><div className="card"><h2><Palette size={20}/> 폼 디자인</h2><div className="themes" role="group" aria-label="폼 디자인 선택">{selectableThemes.map((item) => <button type="button" key={item.id} className={`theme-option ${item.id} ${theme===item.id?'selected':''}`} aria-pressed={theme===item.id} onClick={() => setTheme(item.id)}><span className="theme-swatch"><ThemeIcon theme={item.id}/></span><span className="theme-copy"><b>{item.label}</b><small>{item.description}</small></span></button>)}</div><FormBody program={program} questions={questions} theme={theme} branding={formSettings.branding}/></div><div className="card publish-card"><h2>공개·응답 설정</h2><FormPolicyEditor value={formSettings} onChange={setFormSettings} onCollaborator={published?async(email,role)=>setFormCollaborator(formId,email,role):undefined}/><label>데이터 보존 기준일<input type="date" value={endDate} onChange={(e)=>setEndDate(e.target.value)}/></label><button className="primary wide" onClick={() => void publish()} disabled={publishLoading}>{publishLoading?<LoaderCircle className="spin"/>:<Send/>} 설정 저장하고 배포하기</button>{message && <Notice text={message}/>} {published && <div className="share"><CheckCircle2/><h3>배포 완료</h3>{qr?<img src={qr} alt="공개 폼 QR 코드"/>:<QrCode/>}<div className="copy"><input readOnly value={shareLink}/><button onClick={() => void navigator.clipboard.writeText(shareLink)} aria-label="공개 링크 복사"><Copy/></button></div><div className="share-action-grid"><a className="primary link" href={previewLink} target="_blank" rel="noreferrer"><Eye size={17}/> 미리보기</a><button onClick={() => void sharePublicForm(program.programName,shareLink).catch(()=>setMessage('공유를 완료하지 못했습니다. 링크를 직접 복사해 주세요.'))}><Send size={17}/> 공유</button>{qr&&<button onClick={() => void copyQrImage(qr).catch(()=>setMessage('QR 이미지 복사가 지원되지 않아 PNG 저장을 이용해 주세요.'))}><Copy size={17}/> QR 복사</button>}{qr&&<a className="link" href={qr} download={`${program.programName.replace(/[\\/:*?"<>|]/g,'_')}_QR.png`}><Download size={17}/> QR PNG</a>}<a className="link" href={`mailto:?subject=${encodeURIComponent(formSettings.branding.shareTitle||program.programName)}&body=${encodeURIComponent(`${formSettings.branding.shareDescription||program.description}\n${shareLink}`)}`}><Send size={17}/> 이메일</a><button onClick={() => void navigator.clipboard.writeText(`<iframe src="${shareLink}" title="${program.programName}" width="100%" height="720" loading="lazy"></iframe>`)}><Copy size={17}/> 삽입 코드</button><button onClick={() => void copyPrefilledLink().catch(()=>setMessage('미리 채운 링크를 복사하지 못했습니다.'))}><Copy size={17}/> 미리 채운 링크</button>{formSettings.submission.showPublicResults&&<button onClick={() => void navigator.clipboard.writeText(`${shareLink}&results=1`).then(()=>setMessage('익명 결과 공개 링크를 복사했습니다.'))}><BarChart3 size={17}/> 결과 공개 링크</button>}</div></div>}</div></div><div className="actions between"><button onClick={() => setPage('edit')}>폼 수정</button><div className="actions-inline"><button onClick={openSampleResults}><BarChart3/> 샘플 결과</button><button className="primary" onClick={() => void loadResults()} disabled={resultLoading}>실제 응답 결과</button></div></div></section>}
       {page === 'results' && <ResultsDashboard title={program.programName} loading={resultLoading} responses={responses} questions={questions} summaries={summaries} message={message} sample={sampleResults} initialPage={responsePage} onRefresh={() => sampleResults?openSampleResults():void loadResults()} onQuery={sampleResults?undefined:async(query)=>queryFormResponses(formId,query)} onManage={sampleResults?undefined:async(ids,action)=>manageFormResponses(formId,ids,action)} onLoadExport={sampleResults?undefined:async(query)=>(await queryFormResponses(formId,query,true)).items} onAnalyze={sampleResults?undefined:async(query)=>{const items=(await queryFormResponses(formId,query,true)).items;const topics=await summarizeResponses(items.flatMap(item=>Object.values(item.answers).filter(value=>typeof value==='string').map(String)));if(user)await saveAnalysisRecord({formId,owner:user,stats:{applicants:items.length,participants:items.length,satisfactionResponses:0,satisfactionScores:[]},topics,surveyEndDate:endDate});return topics}} onExportExcel={(items,exportQuestions) => void exportResponsesToExcel(program.programName, exportQuestions, items, analyzeStoredResponses(exportQuestions, items))}/>}
       {page === 'manage' && ownedForms.length>0 && <section className="card version-history-panel"><div className="row"><div><span className="eyebrow">VERSION HISTORY</span><h2>폼 수정 기록</h2></div><div className="version-form-buttons">{ownedForms.map(form=><button key={form.id} onClick={()=>void openVersionHistory(form)}>{form.title}</button>)}</div></div>{versionHistoryTitle&&<div><h3>{versionHistoryTitle}</h3>{versionHistory.length?<ol>{versionHistory.map(version=><li key={version.version}><strong>버전 {version.version}</strong><span>{version.questionCount}개 질문 · {version.createdAt?new Intl.DateTimeFormat('ko-KR',{dateStyle:'medium',timeStyle:'short'}).format(new Date(version.createdAt)):'저장 시각 없음'}</span></li>)}</ol>:<p>저장된 버전 기록이 없습니다.</p>}</div>}</section>}
@@ -547,6 +557,26 @@ function Login({loadingProvider,error,initialEmail,completingEmailLink,onLogin,o
     <small>폼 제작자와 응답자 모두 로그인이 필요합니다.</small>
   </div></main>
 }
+function QuizConfiguration({questions,onChange}:{questions:FormQuestion[];onChange:(questions:FormQuestion[])=>void}) {
+  const update=(id:number,change:Partial<FormQuestion>)=>onChange(questions.map(question=>question.id===id?{...question,...change}:question))
+  return <section className="quiz-configuration" aria-labelledby="quiz-config-title">
+    <div><span className="eyebrow">QUIZ</span><h3 id="quiz-config-title">정답과 배점 설정</h3><p>선택형·체크박스·숫자·단답형 문항을 자동채점할 수 있습니다.</p></div>
+    {questions.filter(question=>question.type!=='long_text'&&question.type!=='file'&&question.type!=='consent').map(question=><fieldset key={question.id}>
+      <legend>{question.label}</legend>
+      <label>배점<input type="number" min="0" max="1000" value={question.points??0} onChange={event=>update(question.id,{points:Math.max(0,Number(event.target.value))})}/></label>
+      <label>정답
+        {question.type==='select'&&question.options?.length
+          ?<select value={String(question.correctAnswers?.[0]??'')} onChange={event=>update(question.id,{correctAnswers:event.target.value?[event.target.value]:[]})}><option value="">정답 선택</option>{question.options.map(option=><option key={option}>{option}</option>)}</select>
+          :question.type==='checkbox'&&question.options?.length
+            ?<span className="quiz-answer-options">{question.options.map(option=><label key={option}><input type="checkbox" checked={question.correctAnswers?.map(String).includes(option)??false} onChange={event=>{const selected=question.correctAnswers?.map(String)??[];update(question.id,{correctAnswers:event.target.checked?[...selected,option]:selected.filter(item=>item!==option)})}}/>{option}</label>)}</span>
+            :<input value={String(question.correctAnswers?.[0]??'')} onChange={event=>update(question.id,{correctAnswers:event.target.value===''?[]:[question.type==='number'?Number(event.target.value):event.target.value]})} inputMode={question.type==='number'?'numeric':undefined}/>}
+      </label>
+      <label>정답 피드백<input value={question.correctFeedback??''} onChange={event=>update(question.id,{correctFeedback:event.target.value})} placeholder="예: 정확합니다."/></label>
+      <label>오답 피드백<input value={question.incorrectFeedback??''} onChange={event=>update(question.id,{incorrectFeedback:event.target.value})} placeholder="예: 핵심 개념을 다시 확인해 보세요."/></label>
+    </fieldset>)}
+  </section>
+}
+
 function Title({step,title,text}:{step:string;title:string;text:string}) { return <div className="title"><span>{step&&`${step}단계`}</span><h1>{title}</h1><p>{text}</p></div> }
 function Notice({text}:{text:string}) { return <div className="notice" role="alert">{text}</div> }
 
@@ -577,6 +607,17 @@ function FormBody({program,questions,theme,branding}:{program:ProgramInfo;questi
 function stableShuffle<T>(items:T[],seed:string){
   const score=(value:T)=>[...`${seed}:${String(value)}`].reduce((sum,char)=>((sum*33)^char.charCodeAt(0))>>>0,5381)
   return [...items].sort((left,right)=>score(left)-score(right))
+}
+
+function fontFamilyForBranding(branding:FormSettings['branding']){
+  if(branding.fontPreset==='serif')return '"Noto Serif KR", "Batang", serif'
+  if(branding.fontPreset==='rounded')return '"Arial Rounded MT Bold", "NanumSquareRound", sans-serif'
+  if(branding.fontPreset==='custom'&&branding.customFontFamily)return `"${branding.customFontFamily}", sans-serif`
+  return 'Inter, Pretendard, system-ui, sans-serif'
+}
+
+function QuizCompletion({result,questions,message,branding,onLogout}:{result:QuizResult;questions:FormQuestion[];message:string;branding:FormSettings['branding'];onLogout:()=>void}){
+  return <main className="public-shell theme-green" style={{fontFamily:fontFamilyForBranding(branding)}}><div className="complete card"><CheckCircle2/><h1>응답 제출 완료</h1><p>{message}</p><section className="quiz-result" aria-live="polite">{result.released?<><span className="eyebrow">QUIZ RESULT</span><h2>{result.score} / {result.maxScore}점</h2><strong>{result.percentage}%</strong>{result.questions?.map(item=><div key={item.questionId} className={item.correct?'correct':'incorrect'}><b>{questions.find(question=>question.id===item.questionId)?.label}</b><span>{item.earnedPoints} / {item.possiblePoints}점</span>{item.correctAnswers?.length?<small>정답: {item.correctAnswers.join(', ')}</small>:null}{item.feedback&&<small>{item.feedback}</small>}</div>)}</>:<><h2>채점 결과는 검토 후 공개됩니다</h2><p>제작자가 결과를 공개하면 확인할 수 있습니다.</p></>}</section><div className="complete-actions"><a className="primary link" href="/"><House/> 대플폼 홈으로</a><button type="button" onClick={onLogout}><LogOut/> 세션 종료</button></div></div></main>
 }
 
 function PublicForm({user,formId,program,questions,theme,endDate,settings,preview,publicResults,onLogout}:{
@@ -612,6 +653,7 @@ function PublicForm({user,formId,program,questions,theme,endDate,settings,previe
   const [showOwnDetails,setShowOwnDetails]=useState(false)
   const [editingSubmitted,setEditingSubmitted]=useState(false)
   const [publicResult,setPublicResult]=useState<{total:number;summaries:QuestionSummary[]}|null>(null)
+  const [quizResult,setQuizResult]=useState<QuizResult|null>(null)
   const [userGroups,setUserGroups]=useState<string[]>([])
   const availability=getFormAvailability(settings)
   const displayQuestions=useMemo(()=>{
@@ -630,6 +672,14 @@ function PublicForm({user,formId,program,questions,theme,endDate,settings,previe
     ||(settings.access.participation==='authenticated'&&!user.isAnonymous)
     ||(settings.access.participation==='kangnam'&&kangnamUser)
     ||(settings.access.participation==='allowlist'&&Boolean((user.email&&settings.access.allowedEmails.map(value=>value.toLowerCase()).includes(user.email.toLowerCase()))||settings.access.allowedGroups.some(group=>userGroups.includes(group))))
+
+  useEffect(()=>{
+    if(settings.branding.fontPreset!=='custom'||!settings.branding.customFontUrl?.startsWith('https://'))return
+    const link=document.createElement('link')
+    link.rel='stylesheet';link.href=settings.branding.customFontUrl;link.dataset.daepulCustomFont='true'
+    document.head.append(link)
+    return()=>link.remove()
+  },[settings.branding.customFontUrl,settings.branding.fontPreset])
 
   useEffect(()=>{
     if(user.isAnonymous)return
@@ -677,7 +727,7 @@ function PublicForm({user,formId,program,questions,theme,endDate,settings,previe
   useEffect(()=>{
     if(preview||!['submitted-now','already-submitted'].includes(submissionStatus)||(!settings.submission.showOwnResponse&&!settings.submission.allowEditAfterSubmit))return
     let active=true
-    void getOwnResponse(formId).then((response)=>{if(active)setSubmittedResponse(response)}).catch(()=>undefined)
+    void getOwnResponse(formId).then((response)=>{if(active){setSubmittedResponse(response);setQuizResult(response?.quizResult??null)}}).catch(()=>undefined)
     return()=>{active=false}
   },[formId,preview,settings.submission.allowEditAfterSubmit,settings.submission.showOwnResponse,submissionStatus])
 
@@ -714,9 +764,9 @@ function PublicForm({user,formId,program,questions,theme,endDate,settings,previe
     if(Object.keys(errors).length){setFieldErrors(errors);setError('필수 질문과 입력 형식을 확인해 주세요.');document.getElementById(`question-${Object.keys(errors)[0]}-input`)?.focus();return}
     setSubmitting(true);setError('')
     try{
-      if(editingSubmitted)await updateOwnResponse(formId,answers,{name:respondentName,studentId,email:respondentEmail})
+      if(editingSubmitted)setQuizResult(await updateOwnResponse(formId,answers,{name:respondentName,studentId,email:respondentEmail}))
       else{
-        await submitResponseOnce({formId,user,answers,surveyEndDate:endDate,questions,settings,respondentName,studentId,respondentEmail,attachments})
+        setQuizResult(await submitResponseOnce({formId,user,answers,surveyEndDate:endDate,questions,settings,respondentName,studentId,respondentEmail,attachments}))
         try{localStorage.removeItem(`daepul-response-draft:${formId}:${user.uid}`)}catch{/* submission already succeeded */}
         void deleteResponseDraft(formId,user.uid).catch(()=>undefined)
       }
@@ -738,10 +788,11 @@ function PublicForm({user,formId,program,questions,theme,endDate,settings,previe
   if(submissionStatus==='check-error')return <main className={`public-shell theme-${theme}`}><div className="complete card"><h1>제출 이력을 확인하지 못했습니다</h1><p>네트워크 연결을 확인한 뒤 다시 시도해 주세요.</p><div className="complete-actions"><button type="button" className="primary" onClick={()=>setCheckAttempt((attempt)=>attempt+1)}><RefreshCcw/> 다시 시도</button><a className="link" href="/"><House/> 대플폼 홈으로</a></div></div></main>
   if((submissionStatus==='submitted-now'||submissionStatus==='already-submitted')&&!editingSubmitted){
     const submittedNow=submissionStatus==='submitted-now'
+    if(quizResult)return <QuizCompletion result={quizResult} questions={questions} message={submittedNow?settings.submission.completionMessage:'제출한 퀴즈 결과입니다.'} branding={settings.branding} onLogout={onLogout}/>
     return <main className={`public-shell theme-${theme}`}><div className="complete card"><CheckCircle2/><h1>{submittedNow?'응답 제출 완료':'이미 제출한 폼입니다'}</h1><p>{submittedNow?settings.submission.completionMessage:'현재 계정 또는 브라우저에서 이미 제출했습니다. 비로그인 1회 제한은 브라우저 기준이며 완전한 본인 확인 수단은 아닙니다.'}</p><div className="complete-actions"><a className="primary link" href="/"><House/> 대플폼 홈으로</a>{settings.submission.showOwnResponse&&<button onClick={()=>setShowOwnDetails(value=>!value)}><Eye/> 내 답변 확인</button>}{settings.submission.allowEditAfterSubmit&&submittedResponse&&<button onClick={()=>{setAnswers(Object.fromEntries(Object.entries(submittedResponse.answers).map(([key,value])=>[Number(key),toPublicAnswer(value)])));setRespondentName(submittedResponse.respondentName??'');setStudentId(submittedResponse.studentId??'');setRespondentEmail(submittedResponse.respondentEmail??'');setEditingSubmitted(true);setPageIndex(0)}}>답변 수정</button>}{settings.submission.showPublicResults&&<button onClick={()=>void getPublicResultSummary(formId).then(setPublicResult).catch(()=>setError('공개 결과를 불러오지 못했습니다.'))}><BarChart3/> 전체 결과</button>}<button type="button" onClick={onLogout}><LogOut/> 세션 종료</button></div>{showOwnDetails&&submittedResponse&&<div className="submitted-answer-review"><h2>제출한 답변</h2>{questions.map((question,index)=><section key={question.id}><b>{index+1}. {question.label}</b><p>{String(submittedResponse.answers[String(question.id)]??'미응답')}</p></section>)}<button onClick={()=>window.print()}><Download/> 인쇄 / PDF</button></div>}{publicResult&&<div className="public-result-summary"><h2>익명 집계 결과 · {publicResult.total}명</h2>{publicResult.summaries.map(summary=><section key={summary.questionId}><b>{summary.label}</b>{summary.average!==undefined&&<p>평균 {summary.average.toFixed(1)}</p>}{summary.distribution?.map(item=><p key={item.label}>{item.label}: {item.count}명</p>)}</section>)}</div>}{error&&<Notice text={error}/>}</div></main>
   }
 
-  return <main id="main-content" className={`public-shell theme-${theme}`} style={{backgroundColor:settings.branding.backgroundColor,'--accent':settings.branding.accentColor} as CSSProperties}>
+  return <main id="main-content" className={`public-shell theme-${theme}`} style={{backgroundColor:settings.branding.backgroundColor,fontFamily:fontFamilyForBranding(settings.branding),'--accent':settings.branding.accentColor} as CSSProperties}>
     <div className="public-user">{preview&&<strong className="preview-chip"><Eye size={14}/> 미리보기</strong>}<span>{user.isAnonymous?'익명 참여':user.email}</span><button type="button" onClick={onLogout}><LogOut/> 나가기</button></div>
     <div className="public-form card">
       {preview&&<div className="preview-banner" role="status"><Eye aria-hidden="true"/><div><b>응답 화면 미리보기</b><span>입력 화면을 확인할 수 있지만 실제 응답은 제출되지 않습니다.</span></div></div>}
