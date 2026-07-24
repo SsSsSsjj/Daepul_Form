@@ -19,6 +19,7 @@ import {
 } from './auth/core'
 import { buildAuthorizationUrl, exchangeCodeForProfile, type ProviderCredentials } from './auth/providers'
 import { FirestoreOAuthSessionRepository, OAuthSessionService } from './auth/sessions'
+import { createFormCallables } from './forms'
 
 type Response = Parameters<Parameters<typeof onRequest>[0]>[1]
 
@@ -35,6 +36,16 @@ const naverClientSecret = defineSecret('NAVER_CLIENT_SECRET')
 
 const sessionService = new OAuthSessionService(new FirestoreOAuthSessionRepository(getFirestore()))
 const accountAuth = new FirebaseAdminAuthGateway(getAuth())
+const formCallables = createFormCallables(getFirestore())
+
+export const {
+  getPublicForm,
+  getFormAccess,
+  checkSlugAvailability,
+  reserveFormSlug,
+  updateFormLifecycle,
+  listFormResponses,
+} = formCallables
 
 function credentialsFor(provider: SocialProvider): ProviderCredentials {
   return provider === 'kakao'
