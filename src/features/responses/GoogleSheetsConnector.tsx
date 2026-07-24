@@ -15,6 +15,13 @@ const disconnected:GoogleSheetsConnectionStatus={status:'disconnected'}
 
 function connectionError(error:unknown){
   const message=error instanceof Error?error.message:''
+  const code=typeof error==='object'&&error!==null&&'code' in error?String(error.code):''
+  if(code==='functions/not-found'||message.includes('functions/not-found')){
+    return 'Google 스프레드시트 연결 서버가 아직 배포되지 않았습니다. 운영자에게 문의해 주세요.'
+  }
+  if(code==='functions/unauthenticated'||message.includes('functions/unauthenticated')){
+    return '로그인 상태를 확인한 뒤 다시 연결해 주세요.'
+  }
   if(message.includes('OAuth 설정'))return '운영자가 Google 연결 설정을 완료해야 합니다.'
   if(message.includes('permission-denied'))return '스프레드시트 접근 권한을 확인해 주세요.'
   return 'Google 스프레드시트 연결을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.'
