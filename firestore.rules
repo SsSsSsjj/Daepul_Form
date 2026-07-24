@@ -136,6 +136,12 @@ service cloud.firestore {
       match /quiz/{documentId} {
         allow read, write: if canEditForm(formId);
       }
+
+      // OAuth refresh/access tokens are written and read only by Admin SDK
+      // Cloud Functions. Form owners never receive these credentials.
+      match /privateIntegrations/{documentId} {
+        allow read, write: if false;
+      }
     }
 
     match /formDrafts/{draftId} {

@@ -67,6 +67,9 @@ try {
   })
   const ownerForms = await getDocs(query(collection(owner.db, 'forms'), where('ownerUid', '==', owner.user.uid)))
   assert.equal(ownerForms.docs.some((item) => item.id === formId), true, 'An owner can list their own forms')
+  const privateIntegrationRef = doc(owner.db, 'forms', formId, 'privateIntegrations', 'googleSheets')
+  await assertDenied(getDoc(privateIntegrationRef), 'A form owner cannot read stored Google OAuth credentials')
+  await assertDenied(setDoc(privateIntegrationRef, { refreshToken: 'must-not-be-client-readable' }), 'A form owner cannot write Google OAuth credentials')
 
   const initialResponse = await getDoc(responseRef)
   assert.equal(initialResponse.exists(), false, 'A respondent can check that their own response is absent')

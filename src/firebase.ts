@@ -256,7 +256,11 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
   }
 
   const nextVersion = targetFormId === formId && checkForExistingResponses ? settings.version + 1 : 1
-  const versionedSettings = { ...settings, version: nextVersion }
+  const versionedSettings = {
+    ...settings,
+    integrations: { ...settings.integrations, formId: targetFormId },
+    version: nextVersion,
+  }
   const publicQuestions = questions.map(({ correctAnswers: _correctAnswers, correctFeedback: _correctFeedback, incorrectFeedback: _incorrectFeedback, ...question }) => {
     void _correctAnswers; void _correctFeedback; void _incorrectFeedback
     return question
@@ -531,6 +535,55 @@ export async function setFormCollaborator(
 ) {
   if (!functions) throw new Error('Firebase Functions가 설정되지 않았습니다.')
   await httpsCallable(functions, 'setFormCollaborator')({ formId, email, role })
+}
+
+export type GoogleSheetsConnectionStatus = {
+  status: 'disconnected'|'authorized'|'connected'
+  spreadsheetId?: string
+  spreadsheetTitle?: string
+  spreadsheetUrl?: string
+}
+
+export type GoogleSpreadsheetChoice = {
+  id: string
+  name: string
+  modifiedTime: string
+  webViewLink: string
+}
+
+export async function beginGoogleSheetsConnection(formId:string){
+  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
+  const result=await httpsCallable<{formId:string},{authorizationUrl:string}>(functions,'beginGoogleSheetsConnection')({formId})
+  return result.data.authorizationUrl
+}
+
+export async function getGoogleSheetsConnection(formId:string):Promise<GoogleSheetsConnectionStatus>{
+  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
+  const result=await httpsCallable<{formId:string},GoogleSheetsConnectionStatus>(functions,'getGoogleSheetsConnection')({formId})
+  return result.data
+}
+
+export async function listAvailableGoogleSpreadsheets(formId:string):Promise<GoogleSpreadsheetChoice[]>{
+  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
+  const result=await httpsCallable<{formId:string},{items:GoogleSpreadsheetChoice[]}>(functions,'listAvailableGoogleSpreadsheets')({formId})
+  return result.data.items
+}
+
+export async function selectGoogleSpreadsheet(formId:string,spreadsheetId:string):Promise<GoogleSheetsConnectionStatus>{
+  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
+  const result=await httpsCallable<{formId:string;spreadsheetId:string},GoogleSheetsConnectionStatus>(functions,'selectGoogleSpreadsheet')({formId,spreadsheetId})
+  return result.data
+}
+
+export async function createAndConnectGoogleSpreadsheet(formId:string):Promise<GoogleSheetsConnectionStatus>{
+  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
+  const result=await httpsCallable<{formId:string},GoogleSheetsConnectionStatus>(functions,'createAndConnectGoogleSpreadsheet')({formId})
+  return result.data
+}
+
+export async function disconnectGoogleSheets(formId:string){
+  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
+  await httpsCallable<{formId:string},{status:'disconnected'}>(functions,'disconnectGoogleSheets')({formId})
 }
 
 export async function getFormDeliveryStatus(formId: string): Promise<Array<{
