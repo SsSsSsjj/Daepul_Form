@@ -196,7 +196,7 @@ export function filterResponses(items: StoredFormResponse[], filters: ResponseFi
   })
 }
 
-export function queryResponses(items: StoredFormResponse[], query: ResponseQuery): ResponsePage {
+export function queryResponses(items: StoredFormResponse[], query: ResponseQuery, exportAll = false): ResponsePage {
   const filtered = filterResponses(items, query.filters)
   const sorted = [...filtered].sort((left, right) => {
     let a = ''
@@ -217,13 +217,16 @@ export function queryResponses(items: StoredFormResponse[], query: ResponseQuery
     const comparison = a.localeCompare(b, 'ko', { numeric: true })
     return query.sortDirection === 'asc' ? comparison : -comparison
   })
-  const start = Math.max(0, (query.page - 1) * query.pageSize)
+  const page = exportAll ? 1 : query.page
+  const pageSize = exportAll ? Math.max(1, sorted.length) : query.pageSize
+  const start = Math.max(0, (page - 1) * pageSize)
   return {
-    items: sorted.slice(start, start + query.pageSize),
+    items: sorted.slice(start, start + pageSize),
     total: sorted.length,
-    page: query.page,
-    pageSize: query.pageSize,
-    hasMore: start + query.pageSize < sorted.length,
+    overallTotal: items.length,
+    page,
+    pageSize,
+    hasMore: start + pageSize < sorted.length,
   }
 }
 

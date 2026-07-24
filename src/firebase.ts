@@ -6,7 +6,7 @@ import {
   sendSignInLinkToEmail, setPersistence, signInAnonymously, signInWithEmailLink, signInWithPopup, signInWithRedirect, signOut, type User,
 } from 'firebase/auth'
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
-import { Timestamp, collection, deleteDoc, doc, getDoc, getDocs, initializeFirestore, limit, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
+import { Timestamp, collection, deleteDoc, doc, getDoc, getDocs, initializeFirestore, limit, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage'
 import {
@@ -17,6 +17,7 @@ import {
 } from './types'
 import { extractHwpText, isHwpFile } from './hwp'
 import { createFormService } from './formService'
+import { queryResponses } from './features/responses/model'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -413,9 +414,27 @@ export async function restoreFormRecord(formId: string) {
 }
 
 export async function emptyDeletedForms(): Promise<number> {
-  if (!functions) throw new Error('Firebase Functions가 설정되지 않았습니다.')
-  const result = await httpsCallable<Record<string, never>, { deleted: number }>(functions, 'emptyDeletedForms')({})
-  return Number(result.data.deleted ?? 0)
+  const userUid=auth?.currentUser?.uid
+  if(!userUid)throw new Error('제작자 로그인이 필요합니다.')
+  const deleted=await getDeletedForms(userUid)
+  for(const form of deleted)await permanentlyDeleteForm(form.id)
+  return deleted.length
+}
+
+export async function permanentlyDeleteForm(formId:string){
+  if(!db)throw new Error('Firestore가 설정되지 않았습니다.')
+  const formRef=doc(db,'forms',formId)
+  const formSnapshot=await getDoc(formRef)
+  if(!formSnapshot.exists()||!formSnapshot.data().deletedAt)throw new Error('휴지통에 있는 폼만 영구 삭제할 수 있습니다.')
+  const childCollections=['responses','drafts','analysis','versions','quiz']
+  const childSnapshots=await Promise.all(childCollections.map(name=>getDocs(collection(db,'forms',formId,name))))
+  const references=childSnapshots.flatMap(snapshot=>snapshot.docs.map(item=>item.ref))
+  for(let start=0;start<references.length;start+=450){
+    const batch=writeBatch(db)
+    references.slice(start,start+450).forEach(reference=>batch.delete(reference))
+    await batch.commit()
+  }
+  await deleteDoc(formRef)
 }
 
 export async function getFormResponses(formId: string): Promise<StoredFormResponse[]> {
@@ -448,13 +467,11 @@ export async function queryFormResponses(
   responseQuery: ResponseQuery,
   exportAll = false,
 ): Promise<ResponsePage> {
-  if (!functions) throw new Error('Firebase Functions가 설정되지 않았습니다.')
-  const callable = httpsCallable<
-    { formId: string; query: ResponseQuery; exportAll: boolean },
-    ResponsePage
-  >(functions, 'queryFormResponses')
-  const result = await callable({ formId, query: responseQuery, exportAll })
-  return result.data
+  // Response reads are permitted only to owners/collaborators by Firestore rules.
+  // Keep this path independent from Cloud Functions so results remain available
+  // on Firebase projects where callable functions have not been provisioned.
+  const responses = await getFormResponses(formId)
+  return queryResponses(responses, responseQuery, exportAll)
 }
 
 export async function manageFormResponses(
