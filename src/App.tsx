@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type DragEvent } from 'react'
-import { ArrowDown, ArrowUp, BarChart3, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, CloudUpload, Copy, Download, Eye, FileText, Flower2, GraduationCap, GripVertical, Heart, House, ImagePlus, Leaf, LayoutDashboard, Link2, LoaderCircle, LogIn, LogOut, Palette, Plus, QrCode, RefreshCcw, Send, Snowflake, Sparkles, Sun, Trash2, TriangleAlert, Upload, WandSparkles, Waves, X } from 'lucide-react'
+import { BarChart3, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, CloudUpload, Copy, Download, Eye, FileText, Flower2, GraduationCap, GripVertical, Heart, House, ImagePlus, Leaf, LayoutDashboard, Link2, LoaderCircle, LogIn, LogOut, Palette, Plus, QrCode, RefreshCcw, Send, Snowflake, Sparkles, Sun, Trash2, TriangleAlert, Upload, WandSparkles, Waves, X } from 'lucide-react'
 import QRCode from 'qrcode'
 import writeXlsxFile, { type SheetData } from 'write-excel-file/browser'
 import kangnamPromotionBar from './assets/kangnam-promotion-bar.png'
@@ -16,6 +16,7 @@ import { defaultFormSettings, type AnswerValue, type FormQuestion, type FormSett
 import { ResultsDashboard } from './features/responses/ResultsDashboard'
 import { FormPolicyEditor } from './features/responses/FormPolicyEditor'
 import { createSampleResponses, getFormAvailability, normalizeFormSettings, settingsFromAiSuggestion, validateAnswers } from './features/responses/model'
+import { reorderQuestions } from './features/forms/reorderQuestions'
 
 type Page = 'create' | 'edit' | 'publish' | 'results' | 'manage'
 type CreationMode = 'ai' | 'manual'
@@ -174,6 +175,9 @@ export default function App() {
   const [reviewNotes, setReviewNotes] = useState<string[]>([])
   const [program, setProgram] = useState<ProgramInfo>(initialDraft.program ?? emptyProgram)
   const [questions, setQuestions] = useState<FormQuestion[]>(initialDraft.questions ?? [])
+  const [draggedQuestionId, setDraggedQuestionId] = useState<number | null>(null)
+  const [dragOverQuestionId, setDragOverQuestionId] = useState<number | null>(null)
+  const [reorderAnnouncement, setReorderAnnouncement] = useState('')
   const [formType, setFormType] = useState<FormType>(initialDraft.formType ?? 'general')
   const [theme, setTheme] = useState<Theme>(normalizeSelectableTheme(String(initialDraft.theme ?? 'green')))
   const [formId, setFormId] = useState(newFormId)
@@ -479,7 +483,19 @@ export default function App() {
   const moveQuestion = (index:number,direction:-1|1) => {
     const target=index+direction
     if(target<0||target>=questions.length)return
+    const question=questions[index]
     const next=[...questions];[next[index],next[target]]=[next[target],next[index]];setQuestions(next)
+    setReorderAnnouncement(`${question.label} 질문을 ${target+1}번째로 이동했습니다.`)
+  }
+  const finishQuestionDrag = () => {
+    if (draggedQuestionId !== null && dragOverQuestionId !== null && draggedQuestionId !== dragOverQuestionId) {
+      const movedQuestion=questions.find((question)=>question.id===draggedQuestionId)
+      const targetIndex=questions.findIndex((question)=>question.id===dragOverQuestionId)
+      setQuestions((current) => reorderQuestions(current,draggedQuestionId,dragOverQuestionId))
+      if(movedQuestion&&targetIndex>=0)setReorderAnnouncement(`${movedQuestion.label} 질문을 ${targetIndex+1}번째로 이동했습니다.`)
+    }
+    setDraggedQuestionId(null)
+    setDragOverQuestionId(null)
   }
   const permanentlyDeleteDeletedForm = async (form:DeletedForm) => {
     if(!window.confirm(`“${form.title}” 폼과 모든 응답을 영구 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`))return
@@ -507,6 +523,14 @@ export default function App() {
     }
     setQuestions([...questions.slice(0,index+1),duplicate,...questions.slice(index+1)])
   }
+  useEffect(() => {
+    const handleDuplicateQuestion = (event:Event) => {
+      const index=(event as CustomEvent<number>).detail
+      if(Number.isInteger(index))duplicateQuestion(index)
+    }
+    window.addEventListener('daepulform:duplicate-question',handleDuplicateQuestion)
+    return () => window.removeEventListener('daepulform:duplicate-question',handleDuplicateQuestion)
+  })
   const toggleFormReception = async (form: OwnedForm) => {
     if(form.organizationShared){setMessage('조직 공유 폼의 접수 상태는 소유자 또는 편집자만 변경할 수 있습니다.');return}
     const nextStatus = form.status === 'open' ? 'paused' : 'open'
@@ -612,7 +636,10 @@ export default function App() {
     <UniversityPatternBand/>
     <main id="main-content">
       {page === 'create' && <section><Title step="1" title="자료를 읽고 폼을 만듭니다" text="PDF·PNG·JPG·HWP 참고문서와 담당자 메모를 Gemini가 함께 분석합니다."/><div className="grid two"><div className="card"><h2>참고문서</h2><div className={`drop ${dragging ? 'dragging' : ''}`} onClick={() => fileRef.current?.click()} onDragOver={(e) => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}><Upload/><b>파일을 선택하거나 끌어 놓으세요</b><span>PDF, PNG, JPG, HWP, HWPX · 최대 5개</span><input ref={fileRef} hidden type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.hwp,.hwpx" onChange={onFiles}/></div>{files.map((file, i) => <div className="file" key={`${file.name}-${i}`}><FileText size={16}/><span>{file.name}</span><button onClick={() => setFiles(files.filter((_, index) => index !== i))}><Trash2 size={15}/></button></div>)}</div><div className="card"><h2>담당자 메모</h2><textarea value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 이 자료는 행사 만족도 조사입니다. 익명으로 받고 개선 의견을 자세히 물어봐 주세요."/><small>문서와 메모가 함께 AI 분석에 반영됩니다.</small></div></div>{analysisError && <Notice text={analysisError}/>}<div className="actions create-actions"><button type="button" className="manual-create" onClick={startManualForm}><Plus/> 직접 폼 만들기</button><button type="button" className="sample-view" onClick={openServiceSample}><Eye/> 샘플 보기</button><button className="primary" onClick={() => void analyze()} disabled={analysisLoading}>{analysisLoading ? <LoaderCircle className="spin"/> : <WandSparkles/>}{analysisLoading ? '문서를 읽는 중...' : 'AI로 폼 만들기'}</button></div></section>}
+{/*
       {page === 'edit' && <section><Title step="2" title={creationMode === 'manual' ? '폼 내용을 직접 입력하세요' : 'AI가 만든 폼을 확인하세요'} text={creationMode === 'manual' ? '기본 정보와 질문을 입력한 뒤 디자인·배포 설정으로 이동합니다.' : '문서에서 확실하지 않은 내용은 검토 항목으로 표시합니다.'}/>{reviewNotes.length > 0 && <div className="notice warn"><b>사람이 확인할 항목</b>{reviewNotes.map((note) => <span key={note}>• {note}</span>)}</div>}<div className="grid edit"><div><div className="card form-fields"><h2>폼 기본 정보</h2><label>폼 제목<input value={program.programName} onChange={(e) => setProgram({...program, programName:e.target.value})}/></label><label>설명<textarea value={program.description} onChange={(e) => setProgram({...program, description:e.target.value})}/></label><div className="grid two"><label>대상<input value={program.target} onChange={(e) => setProgram({...program, target:e.target.value})}/></label><label>기간<input value={program.period} onChange={(e) => setProgram({...program, period:e.target.value})}/></label></div></div><div className="card"><div className="row"><h2>질문 {questions.length}개</h2><button onClick={() => setQuestions([...questions,{id:Date.now(),label:'',type:'short_text',required:false}])}><Plus size={16}/> 질문 추가</button></div>{questions.map((q,index)=><QuestionEditor key={q.id} question={q} index={index} count={questions.length} formId={formId} user={user} onChange={(change)=>setQuestions(questions.map(item=>item.id===q.id?{...item,...change}:item))} onMove={(direction)=>moveQuestion(index,direction)} onDuplicate={()=>duplicateQuestion(index)} onDelete={()=>setQuestions(questions.filter(item=>item.id!==q.id))}/>)}{formSettings.quiz.enabled&&<QuizConfiguration questions={questions} onChange={setQuestions}/>}</div></div><aside className="card preview"><h2>미리보기</h2><FormBody program={program} questions={questions} theme={theme} branding={formSettings.branding}/></aside></div><div className="actions between"><button onClick={() => setPage('create')}>자료 다시 선택</button><button className="primary" onClick={() => setPage('publish')}>디자인·배포 설정</button></div></section>}
+*/}
+      {page === 'edit' && <section><Title step="2" title={creationMode === 'manual' ? '폼 내용을 직접 입력하세요' : 'AI가 만든 폼을 확인하세요'} text={creationMode === 'manual' ? '기본 정보와 질문을 입력한 뒤 디자인·배포 설정으로 이동합니다.' : '문서에서 확실하지 않은 내용은 검토 항목으로 표시합니다.'}/>{reviewNotes.length > 0 && <div className="notice warn"><b>사람이 확인할 항목</b>{reviewNotes.map((note) => <span key={note}>• {note}</span>)}</div>}<div className="grid edit"><div><div className="card form-fields"><h2>폼 기본 정보</h2><label>폼 제목<input value={program.programName} onChange={(e) => setProgram({...program, programName:e.target.value})}/></label><label>설명<textarea value={program.description} onChange={(e) => setProgram({...program, description:e.target.value})}/></label><div className="grid two"><label>대상<input value={program.target} onChange={(e) => setProgram({...program, target:e.target.value})}/></label><label>기간<input value={program.period} onChange={(e) => setProgram({...program, period:e.target.value})}/></label></div></div><div className="card"><div className="row question-list-heading"><div><h2>질문 {questions.length}개</h2><p>왼쪽 손잡이를 끌어 원하는 위치에 놓으세요.</p></div><button onClick={() => setQuestions([...questions,{id:Date.now(),label:'',type:'short_text',required:false}])}><Plus size={16}/> 질문 추가</button></div><div className="sr-only" aria-live="polite">{reorderAnnouncement}</div>{questions.map((q,index)=><QuestionEditor key={q.id} question={q} index={index} count={questions.length} formId={formId} user={user} dragging={draggedQuestionId===q.id} dropTarget={dragOverQuestionId===q.id&&draggedQuestionId!==q.id} onDragStart={()=>{setDraggedQuestionId(q.id);setDragOverQuestionId(q.id)}} onDragMove={(clientX,clientY)=>{const target=document.elementFromPoint(clientX,clientY)?.closest<HTMLElement>('[data-question-id]');const targetId=Number(target?.dataset.questionId);if(Number.isFinite(targetId))setDragOverQuestionId(targetId)}} onDragEnd={finishQuestionDrag} onDragCancel={()=>{setDraggedQuestionId(null);setDragOverQuestionId(null)}} onChange={(change)=>setQuestions(questions.map(item=>item.id===q.id?{...item,...change}:item))} onMove={(direction)=>moveQuestion(index,direction)} onDelete={()=>setQuestions(questions.filter(item=>item.id!==q.id))}/>)}{formSettings.quiz.enabled&&<QuizConfiguration questions={questions} onChange={setQuestions}/>}</div></div><aside className="card preview"><h2>미리보기</h2><FormBody program={program} questions={questions} theme={theme} branding={formSettings.branding}/></aside></div><div className="actions between"><button onClick={() => setPage('create')}>자료 다시 선택</button><button className="primary" onClick={() => setPage('publish')}>디자인·배포 설정</button></div></section>}
       {page === 'publish' && <section><Title step="3" title="디자인과 참여 정책을 설정하세요" text="참여 대상, 접수 일정, 제출 후 동작을 정한 뒤 공개 링크를 생성합니다."/><div className="grid two"><div className="card"><h2><Palette size={20}/> 폼 디자인</h2><div className="themes" role="group" aria-label="폼 디자인 선택">{selectableThemes.map((item) => <button type="button" key={item.id} className={`theme-option ${item.id} ${theme===item.id?'selected':''}`} aria-pressed={theme===item.id} onClick={() => setTheme(item.id)}><span className="theme-swatch"><ThemeIcon theme={item.id}/></span><span className="theme-copy"><b>{item.label}</b><small>{item.description}</small></span></button>)}</div>{theme==='green'&&<div className="basic-color-customizer"><div><Palette aria-hidden="true"/><span><b>기본 디자인 색상</b><small>원하는 강조색과 배경색을 자유롭게 선택하세요.</small></span></div><label>강조색<input type="color" value={formSettings.branding.accentColor} onChange={(event)=>setFormSettings(current=>({...current,branding:{...current.branding,accentColor:event.target.value}}))}/><code>{formSettings.branding.accentColor}</code></label><label>배경색<input type="color" value={formSettings.branding.backgroundColor} onChange={(event)=>setFormSettings(current=>({...current,branding:{...current.branding,backgroundColor:event.target.value}}))}/><code>{formSettings.branding.backgroundColor}</code></label></div>}<FormBody program={program} questions={questions} theme={theme} branding={formSettings.branding}/></div><div className="card publish-card"><h2>공개·응답 설정</h2>{creationMode==='ai'&&<div className="ai-settings-note"><WandSparkles/><span><b>AI 추천 설정이 적용되었습니다</b><small>문서에서 찾은 대상·일정·응답 방식과 공유 정보를 바탕으로 채웠습니다. 배포 전에 확인하고 자유롭게 수정할 수 있습니다.</small></span></div>}<FormPolicyEditor value={formSettings} previewTitle={program.programName} previewDescription={program.description} onChange={setFormSettings} onCollaborator={published?async(email,role)=>setFormCollaborator(formId,email,role):undefined}/><label>데이터 보존 기준일<input type="date" value={endDate} onChange={(e)=>setEndDate(e.target.value)}/></label><button className="primary wide" onClick={() => void publish()} disabled={publishLoading}>{publishLoading?<LoaderCircle className="spin"/>:<Send/>} 설정 저장하고 배포하기</button>{message && <Notice text={message}/>} {published && <div className="share"><CheckCircle2/><h3>배포 완료</h3>{qr?<img src={qr} alt="공개 폼 QR 코드"/>:<QrCode/>}<div className="copy"><input readOnly value={shareLink}/><button onClick={() => void navigator.clipboard.writeText(shareLink)} aria-label="공개 링크 복사"><Copy/></button></div><div className="share-action-grid"><a className="primary link" href={previewLink} target="_blank" rel="noreferrer"><Eye size={17}/> 미리보기</a><button onClick={() => void sharePublicForm(program.programName,shareLink).catch(()=>setMessage('공유를 완료하지 못했습니다. 링크를 직접 복사해 주세요.'))}><Send size={17}/> 공유</button>{qr&&<button onClick={() => void copyQrImage(qr).catch(()=>setMessage('QR 이미지 복사가 지원되지 않아 PNG 저장을 이용해 주세요.'))}><Copy size={17}/> QR 복사</button>}{qr&&<a className="link" href={qr} download={`${program.programName.replace(/[\\/:*?"<>|]/g,'_')}_QR.png`}><Download size={17}/> QR PNG</a>}<a className="link" href={`mailto:?subject=${encodeURIComponent(formSettings.branding.shareTitle||program.programName)}&body=${encodeURIComponent(`${formSettings.branding.shareDescription||program.description}\n${shareLink}`)}`}><Send size={17}/> 이메일</a><button onClick={() => void navigator.clipboard.writeText(`<iframe src="${shareLink}" title="${program.programName}" width="100%" height="720" loading="lazy"></iframe>`)}><Copy size={17}/> 삽입 코드</button><button onClick={() => void copyPrefilledLink().catch(()=>setMessage('미리 채운 링크를 복사하지 못했습니다.'))}><Copy size={17}/> 미리 채운 링크</button>{formSettings.submission.showPublicResults&&<button onClick={() => void navigator.clipboard.writeText(`${shareLink}&results=1`).then(()=>setMessage('익명 결과 공개 링크를 복사했습니다.'))}><BarChart3 size={17}/> 결과 공개 링크</button>}</div></div>}</div></div><div className="actions between"><button onClick={() => setPage('edit')}>폼 수정</button><div className="actions-inline"><button onClick={openSampleResults}><BarChart3/> 샘플 결과</button><button className="primary" onClick={() => void loadResults()} disabled={resultLoading}>실제 응답 결과</button></div></div></section>}
       {page === 'results' && <ResultsDashboard title={program.programName} loading={resultLoading} responses={responses} questions={questions} summaries={summaries} message={message} sample={sampleResults} initialPage={responsePage} onRefresh={() => sampleResults?openSampleResults():void loadResults()} onQuery={sampleResults?undefined:async(query)=>queryFormResponses(formId,query)} onManage={sampleResults?undefined:async(ids,action)=>manageFormResponses(formId,ids,action)} onLoadExport={sampleResults?undefined:async(query)=>(await queryFormResponses(formId,query,true)).items} onAnalyze={sampleResults?undefined:async(query)=>{const items=(await queryFormResponses(formId,query,true)).items;const topics=await summarizeResponses(items.flatMap(item=>Object.values(item.answers).filter(value=>typeof value==='string').map(String)));if(user)await saveAnalysisRecord({formId,owner:user,stats:{applicants:items.length,participants:items.length,satisfactionResponses:0,satisfactionScores:[]},topics,surveyEndDate:endDate});return topics}} onExportExcel={(items,exportQuestions) => void exportResponsesToExcel(program.programName, exportQuestions, items, analyzeStoredResponses(exportQuestions, items))}/>}
       {page === 'manage' && ownedForms.length>0 && <section className="card version-history-panel"><div className="row"><div><span className="eyebrow">VERSION HISTORY</span><h2>폼 수정 기록</h2></div><div className="version-form-buttons">{ownedForms.map(form=><button key={form.id} onClick={()=>void openVersionHistory(form)}>{form.title}</button>)}</div></div>{versionHistoryTitle&&<div><h3>{versionHistoryTitle}</h3>{versionHistory.length?<ol>{versionHistory.map(version=><li key={version.version}><strong>버전 {version.version}</strong><span>{version.questionCount}개 질문 · {version.createdAt?new Intl.DateTimeFormat('ko-KR',{dateStyle:'medium',timeStyle:'short'}).format(new Date(version.createdAt)):'저장 시각 없음'}</span></li>)}</ol>:<p>저장된 버전 기록이 없습니다.</p>}</div>}</section>}
@@ -725,15 +752,23 @@ function ImageAttachmentDialog({title,formId,user,currentUrl,onApply,onClose}:{
   </div>
 }
 
+/*
 function QuestionEditor({question,index,count,formId,user,onChange,onMove,onDuplicate,onDelete}:{
+*/
+function QuestionEditor({question,index,count,formId,user,dragging,dropTarget,onDragStart,onDragMove,onDragEnd,onDragCancel,onChange,onMove,onDelete}:{
   question:FormQuestion
   index:number
   count:number
   formId:string
   user:FirebaseUser
+  dragging:boolean
+  dropTarget:boolean
+  onDragStart:()=>void
+  onDragMove:(clientX:number,clientY:number)=>void
+  onDragEnd:()=>void
+  onDragCancel:()=>void
   onChange:(change:Partial<FormQuestion>)=>void
   onMove:(direction:-1|1)=>void
-  onDuplicate:()=>void
   onDelete:()=>void
 }) {
   const selectable=question.type==='select'||question.type==='checkbox'
@@ -777,14 +812,14 @@ function QuestionEditor({question,index,count,formId,user,onChange,onMove,onDupl
       onChange({optionImageUrls:nextImages})
     }
   }
-  return <article className="question-editor">
+  return <article className={`question-editor${dragging?' is-dragging':''}${dropTarget?' is-drop-target':''}`} data-question-id={question.id}>
     <div className="question">
-      <div className="question-order" aria-label={`${index+1}번 질문 순서 조정`}><span>{index+1}</span><button type="button" aria-label={`${questionName} 위로 이동`} disabled={index===0} onClick={()=>onMove(-1)}><ArrowUp size={15}/></button><button type="button" aria-label={`${questionName} 아래로 이동`} disabled={index===count-1} onClick={()=>onMove(1)}><ArrowDown size={15}/></button></div>
+      <div className="question-order"><span aria-hidden="true">{index+1}</span><button type="button" className="question-drag-handle" aria-label={`${questionName} 순서 변경. 현재 ${index+1}번째. 끌어서 이동하거나 키보드 위아래 화살표를 사용하세요.`} onPointerDown={(event)=>{if(event.button!==0)return;event.preventDefault();event.currentTarget.setPointerCapture(event.pointerId);onDragStart()}} onPointerMove={(event)=>{if(event.currentTarget.hasPointerCapture(event.pointerId))onDragMove(event.clientX,event.clientY)}} onPointerUp={(event)=>{if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);onDragEnd()}} onPointerCancel={onDragCancel} onKeyDown={(event)=>{if(event.key==='ArrowUp'&&index>0){event.preventDefault();onMove(-1)}else if(event.key==='ArrowDown'&&index<count-1){event.preventDefault();onMove(1)}}}><GripVertical size={20}/></button></div>
       <input aria-label={`${index+1}번 질문 내용`} value={label} placeholder="질문을 입력해 주세요" onChange={(event)=>onChange({label:event.target.value})}/>
       <button type="button" className={`question-image-button ${question.imageUrl?'has-image':''}`} aria-label={`${index+1}번 질문 이미지 첨부`} onClick={()=>setImageTarget('question')}><ImagePlus size={18}/></button>
       <select aria-label={`${questionName} 질문 유형`} value={question.type} onChange={(event)=>changeType(event.target.value as FormQuestion['type'])}>{Object.entries(typeLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
       <label className="check"><input type="checkbox" checked={question.required} onChange={(event)=>onChange({required:event.target.checked})}/>필수</label>
-      <div className="question-actions"><button type="button" aria-label={`${questionName} 복사`} title="질문 복사" onClick={onDuplicate}><Copy size={16}/></button><button type="button" aria-label={`${questionName} 삭제`} title="질문 삭제" onClick={onDelete}><Trash2 size={16}/></button></div>
+      <div className="question-actions"><button type="button" aria-label={`${questionName} 복사`} title="질문 복사" onClick={()=>window.dispatchEvent(new CustomEvent('daepulform:duplicate-question',{detail:index}))}><Copy size={16}/></button><button type="button" aria-label={`${questionName} 삭제`} title="질문 삭제" onClick={onDelete}><Trash2 size={16}/></button></div>
     </div>
     {question.imageUrl&&<div className="question-image-preview"><div className="editor-image-frame"><img src={question.imageUrl} alt={`${questionName} 첨부 이미지`}/><button type="button" className="image-remove-badge" aria-label={`${questionName} 이미지 제거`} title="이미지 제거" onClick={()=>onChange({imageUrl:''})}><X size={15}/></button></div></div>}
     {question.type==='short_text'&&<div className="response-validation"><label>답변 형식<select value={question.inputFormat??'none'} onChange={(event)=>onChange({inputFormat:event.target.value as FormQuestion['inputFormat']})}><option value="none">제한 없음</option><option value="email">이메일 주소</option><option value="phone">휴대전화 010-0000-0000</option></select></label><small>{question.inputFormat==='email'?'올바른 이메일 주소가 아니면 제출할 수 없습니다.':question.inputFormat==='phone'?'하이픈(-)을 포함한 010-0000-0000 형식만 허용합니다.':'필요하면 이메일이나 휴대전화 형식을 지정하세요.'}</small></div>}
