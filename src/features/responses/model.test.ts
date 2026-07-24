@@ -66,6 +66,19 @@ describe('public response model', () => {
     expect(sample.answers['12']).toEqual(['진로', '창업'])
   })
 
+  it('creates sample answers only for the section route selected by each response', () => {
+    const routedQuestions: FormQuestion[] = [
+      { id: 20, label: '학적 상태', type: 'select', required: true, options: ['재학생', '휴학생'], sectionId: 'status', branch: { 재학생: 'student', 휴학생: 'leave' } },
+      { id: 21, label: '만족도', type: 'rating', required: true, sectionId: 'student', sectionNext: 'submit' },
+      { id: 22, label: '복학 지원', type: 'short_text', required: true, sectionId: 'leave', sectionNext: 'submit' },
+    ]
+    const [student, leave] = createSampleResponses(routedQuestions, 2)
+    expect(student.answers).toMatchObject({ 20: '재학생', 21: 1 })
+    expect(student.answers).not.toHaveProperty('22')
+    expect(leave.answers).toMatchObject({ 20: '휴학생', 22: '예시 답변 2' })
+    expect(leave.answers).not.toHaveProperty('21')
+  })
+
   it('searches, sorts and paginates response metadata and answers', () => {
     const responses = createSampleResponses(questions, 60)
     const page = queryResponses(responses, {
