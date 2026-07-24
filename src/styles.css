@@ -99,3 +99,34 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .university-brand .university-name{display:none}
   .university-brand>i{display:none}
 }
+
+/* Kangnam University Job Plus Center visual system */
+.app{--accent:#087fc5;--soft:#eaf4fb;--dark:#102f4c;background:#f5f8fb}
+.app header{border-bottom-color:#d8e1ea;box-shadow:0 2px 12px #102f4c0a}
+.app .card{border-color:#d8e1ea;box-shadow:0 9px 28px #102f4c0b}
+.app .title>span{color:#087fc5}
+.app .primary{background:#087fc5;border-color:#087fc5}
+body .login{background:radial-gradient(circle at 15% 10%,#dceefd,transparent 36%),#f5f8fb}
+.login .logo{background:#087fc5}
+.login .social-login.google{background:#102b46}
+.create-actions{align-items:center}
+.manual-create{border-color:#87a8c2;color:#173d5d;background:#fff;font-weight:700}
+.manual-create:hover{background:#edf6fc;border-color:#087fc5;color:#087fc5}
+
+body{padding-bottom:38px}
+.career-center-footer{position:fixed;left:0;right:0;bottom:0;z-index:100;min-height:38px;padding:0 max(18px,calc((100vw - 1180px)/2));display:flex;align-items:center;justify-content:flex-end;gap:24px;background:#102b46;color:#fff;font-size:12px;box-shadow:0 -4px 16px #102b4620}
+.career-center-footer span,.career-center-footer a{white-space:nowrap}
+.career-center-footer a{color:#fff;font-weight:700;text-decoration:none}
+.career-center-footer .kakao-channel{align-self:stretch;display:flex;align-items:center;padding:0 18px;background:#fee500;color:#191919}
+.career-center-footer .kakao-channel::before{content:'Ch';display:grid;place-items:center;width:18px;height:18px;margin-right:7px;border-radius:50%;background:#191919;color:#fee500;font-size:8px;font-weight:900}
+
+@media(max-width:760px){
+  body{padding-bottom:58px}
+  .career-center-footer{min-height:58px;padding:7px 12px;justify-content:center;gap:4px 14px;flex-wrap:wrap;font-size:10px}
+  .career-center-footer .kakao-channel{align-self:auto;min-height:25px;padding:0 11px;border-radius:5px}
+  .create-actions{display:grid;grid-template-columns:1fr 1fr}
+}
+@media(max-width:430px){
+  .career-center-footer span:first-child{width:100%;text-align:center}
+  .career-center-footer{gap:3px 10px}
+}
