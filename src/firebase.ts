@@ -230,9 +230,13 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
     if (slugMatches.docs.some((item) => item.id !== formId)) throw new Error('public-slug-in-use')
   }
   let targetFormId = formId
+  let responseCount = 0
+  // A first publish must not read the not-yet-created form: Firestore correctly
+  // denies that lookup because the document has no owner data to authorize.
   if (checkForExistingResponses) {
     const existingForm = await getDoc(doc(db, 'forms', formId))
     if (existingForm.exists()) {
+      responseCount = Number(existingForm.data().responseCount ?? 0)
       const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options }) => ({
         id, label, type, required, options: options ?? [],
       }))
@@ -240,12 +244,14 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
       const questionsChanged = JSON.stringify(normalizeQuestions(previousQuestions)) !== JSON.stringify(normalizeQuestions(questions))
       if (questionsChanged) {
         const existingResponses = await getDocs(query(collection(db, 'forms', formId, 'responses'), limit(1)))
-        if (!existingResponses.empty) targetFormId = `form-${crypto.randomUUID().slice(0, 8)}`
+        if (!existingResponses.empty) {
+          targetFormId = `form-${crypto.randomUUID().slice(0, 8)}`
+          responseCount = 0
+        }
       }
     }
   }
 
-  const targetSnapshot = await getDoc(doc(db, 'forms', targetFormId))
   const nextVersion = targetFormId === formId && checkForExistingResponses ? settings.version + 1 : 1
   const versionedSettings = { ...settings, version: nextVersion }
   const publicQuestions = questions.map(({ correctAnswers: _correctAnswers, correctFeedback: _correctFeedback, incorrectFeedback: _incorrectFeedback, ...question }) => {
@@ -263,7 +269,7 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
     theme,
     settings: versionedSettings,
     status: settings.schedule.status,
-    responseCount: targetSnapshot.exists() ? Number(targetSnapshot.data().responseCount ?? 0) : 0,
+    responseCount,
     published: settings.schedule.status !== 'private',
     surveyEndAt: Timestamp.fromDate(new Date(`${surveyEndDate}T23:59:59+09:00`)),
     expireAt: expirationFromSurveyEnd(surveyEndDate), updatedAt: serverTimestamp(),
