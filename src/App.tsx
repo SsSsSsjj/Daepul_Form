@@ -625,7 +625,8 @@ function QuestionEditor({question,index,count,onChange,onMove,onDelete}:{
   const selectable=question.type==='select'||question.type==='checkbox'
   const label=editableQuestionLabel(question.label)
   const questionName=label.trim()||`${index+1}번 질문`
-  const options=question.options?.length?question.options:['선택지 1','선택지 2']
+  const options=question.options?.length?question.options:['','']
+  const editableOption=(option:string,optionIndex:number)=>option.trim()===`선택지 ${optionIndex+1}`?'':option
   const changeType=(type:FormQuestion['type'])=>{
     const nextSelectable=type==='select'||type==='checkbox'
     onChange({
@@ -645,7 +646,7 @@ function QuestionEditor({question,index,count,onChange,onMove,onDelete}:{
       <button type="button" aria-label={`${questionName} 삭제`} onClick={onDelete}><Trash2 size={16}/></button>
     </div>
     {question.type==='short_text'&&<div className="response-validation"><label>답변 형식<select value={question.inputFormat??'none'} onChange={(event)=>onChange({inputFormat:event.target.value as FormQuestion['inputFormat']})}><option value="none">제한 없음</option><option value="email">이메일 주소</option><option value="phone">휴대전화 010-0000-0000</option></select></label><small>{question.inputFormat==='email'?'올바른 이메일 주소가 아니면 제출할 수 없습니다.':question.inputFormat==='phone'?'하이픈(-)을 포함한 010-0000-0000 형식만 허용합니다.':'필요하면 이메일이나 휴대전화 형식을 지정하세요.'}</small></div>}
-    {selectable&&<fieldset className="option-editor"><legend>{question.type==='checkbox'?'체크박스 선택지':'객관식 선택지'} <span>{options.length}개</span></legend><p>{question.type==='checkbox'?'응답자는 아래 항목을 여러 개 선택할 수 있습니다.':'응답자는 아래 항목 중 하나를 선택합니다.'}</p>{options.map((option,optionIndex)=><div key={optionIndex}><span aria-hidden="true">{question.type==='checkbox'?'□':'○'}</span><input aria-label={`선택지 ${optionIndex+1}`} value={option} onChange={(event)=>updateOption(optionIndex,event.target.value)} placeholder={`선택지 ${optionIndex+1}`}/><button type="button" aria-label={`선택지 ${optionIndex+1} 삭제`} disabled={options.length<=2} onClick={()=>removeOption(optionIndex)}><Trash2 size={15}/></button></div>)}<button type="button" className="add-option" disabled={options.length>=50} onClick={()=>onChange({options:[...options,`선택지 ${options.length+1}`]})}><Plus size={16}/> 선택지 추가</button></fieldset>}
+    {selectable&&<fieldset className="option-editor"><legend>{question.type==='checkbox'?'체크박스 선택지':'객관식 선택지'} <span>{options.length}개</span></legend><p>{question.type==='checkbox'?'응답자는 아래 항목을 여러 개 선택할 수 있습니다.':'응답자는 아래 항목 중 하나를 선택합니다.'}</p>{options.map((option,optionIndex)=><div key={optionIndex}><span aria-hidden="true">{question.type==='checkbox'?'□':'○'}</span><input aria-label={`선택지 ${optionIndex+1}`} value={editableOption(option,optionIndex)} onChange={(event)=>updateOption(optionIndex,event.target.value)} placeholder={`선택지 ${optionIndex+1}`}/><button type="button" aria-label={`선택지 ${optionIndex+1} 삭제`} disabled={options.length<=2} onClick={()=>removeOption(optionIndex)}><Trash2 size={15}/></button></div>)}<button type="button" className="add-option" disabled={options.length>=50} onClick={()=>onChange({options:[...options,'']})}><Plus size={16}/> 선택지 추가</button></fieldset>}
   </article>
 }
 
