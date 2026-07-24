@@ -44,7 +44,16 @@ service cloud.firestore {
         : form.settings.access.participation == 'anyone'
           || (form.settings.access.participation == 'authenticated' && request.auth.token.firebase.sign_in_provider != 'anonymous')
           || (form.settings.access.participation == 'kangnam' && request.auth.token.email_verified == true && email.matches('.*@kangnam[.]ac[.]kr$'))
-          || (form.settings.access.participation == 'allowlist' && request.auth.token.email_verified == true && email in form.settings.access.allowedEmails);
+          || (form.settings.access.participation == 'allowlist'
+            && request.auth.token.email_verified == true
+            && (
+              email in form.settings.access.allowedEmails
+              || (
+                'groups' in request.auth.token
+                && 'allowedGroups' in form.settings.access
+                && request.auth.token.groups.hasAny(form.settings.access.allowedGroups)
+              )
+            ));
     }
 
     match /oauthStates/{stateId} {
@@ -98,7 +107,8 @@ service cloud.firestore {
       }
 
       match /drafts/{actorId} {
-        allow read, create, update, delete: if signedIn() && actorId == request.auth.uid;
+        allow read, delete: if canEditForm(formId) || (signedIn() && actorId == request.auth.uid);
+        allow create, update: if signedIn() && actorId == request.auth.uid;
       }
 
       match /analysis/{analysisId} {
@@ -107,7 +117,9 @@ service cloud.firestore {
       }
 
       match /versions/{versionId} {
-        allow read, create: if canManageForm(formId);
+        allow read: if canManageForm(formId);
+        allow create: if canEditForm(formId)
+          && request.resource.data.createdBy == request.auth.uid;
         allow update, delete: if false;
       }
     }

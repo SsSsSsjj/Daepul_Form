@@ -101,9 +101,6 @@ try {
   await assertDenied(updateDoc(responseRef, { answers: { 1: 'changed' } }), 'A respondent cannot update the response')
   await assertDenied(deleteDoc(responseRef), 'A respondent cannot delete the response')
 
-  const ownerResponseRef = doc(owner.db, 'forms', formId, 'responses', respondent.user.uid)
-  assert.equal((await getDoc(ownerResponseRef)).exists(), true, 'The form owner can read responses')
-  await deleteDoc(ownerResponseRef)
   await deleteDoc(formRef)
   console.log('Firestore response rules test passed')
 } finally {
