@@ -238,9 +238,10 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
     const existingForm = await getDoc(doc(db, 'forms', formId))
     if (existingForm.exists()) {
       responseCount = Number(existingForm.data().responseCount ?? 0)
-      const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options, inputFormat, maxSelections, imageUrl, optionImageUrls }) => ({
+      const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options, inputFormat, maxSelections, imageUrl, optionImageUrls, sectionId, sectionTitle, sectionNext, branch }) => ({
         id, label, type, required, options: options ?? [], inputFormat: inputFormat ?? 'none', maxSelections: maxSelections ?? null,
-        imageUrl: imageUrl ?? '', optionImageUrls: optionImageUrls ?? [],
+        imageUrl: imageUrl ?? '', optionImageUrls: optionImageUrls ?? [], sectionId: sectionId ?? '', sectionTitle: sectionTitle ?? '',
+        sectionNext: sectionNext ?? '', branch: branch ?? {},
       }))
       const previousQuestions = (existingForm.data().questions ?? []) as FormQuestion[]
       const questionsChanged = JSON.stringify(normalizeQuestions(previousQuestions)) !== JSON.stringify(normalizeQuestions(questions))
@@ -709,7 +710,13 @@ const formSchema = Schema.object({ properties: {
     label: Schema.string(), type: Schema.enumString({ enum: ['short_text', 'long_text', 'select', 'checkbox', 'consent', 'rating', 'number', 'file'] }),
     required: Schema.boolean(), options: Schema.array({ items: Schema.string() }),
     inputFormat: Schema.enumString({ enum: ['none', 'email', 'phone'] }),
-  }, optionalProperties: ['options', 'inputFormat'] }) }),
+    sectionId: Schema.string(), sectionTitle: Schema.string(), sectionNext: Schema.string(),
+    branchRules: Schema.array({ items: Schema.object({ properties: {
+      option: Schema.string(),
+      action: Schema.enumString({ enum: ['next', 'section', 'submit'] }),
+      targetSectionId: Schema.string(),
+    } }) }),
+  }, optionalProperties: ['options', 'inputFormat', 'sectionId', 'sectionTitle', 'sectionNext', 'branchRules'] }) }),
   reviewNotes: Schema.array({ items: Schema.string() }),
   suggestedTheme: Schema.enumString({ enum: ['green', 'spring', 'summer', 'autumn', 'winter', 'kangnam'] }),
   suggestedEndDate: Schema.string(),
@@ -764,25 +771,59 @@ export async function generateFormFromDocuments(files: File[], memo: string): Pr
 만족도 조사라면 1~5점 rating과 자유의견을 포함하고, 신청서라면 신청 자격·일정·선발에 필요한 질문을 만드세요.
 객관식(select)과 체크박스(checkbox) 질문에는 실제 문서 내용을 바탕으로 options를 반드시 2개 이상 작성하세요. checkbox는 여러 항목을 동시에 선택하는 질문에만 사용하세요.
 이메일 또는 휴대전화 번호를 직접 입력받는 단답형 질문은 inputFormat을 각각 email 또는 phone으로 지정하고, 그 외 질문은 none으로 지정하세요.
+담당자 메모나 문서에 "재학생만 응답", "학적 상태에 따라 다른 문항", "해당 학년만 응답"처럼 조건과 대상 문항이 명확히 적힌 경우에만 질문을 sectionId와 sectionTitle로 묶고 단일 선택 객관식의 branchRules를 만드세요.
+branchRules의 action은 일반 진행이면 next, 특정 섹션 이동이면 section과 targetSectionId, 즉시 제출이면 submit을 사용하세요. 분기 대상 섹션의 마지막 질문에는 필요하면 sectionNext를 submit 또는 다음 sectionId로 지정하세요.
+단순히 재학생·휴학생 여부를 조사할 뿐 이후 문항을 모두 응답해야 하는 경우에는 분기를 만들지 마세요. 조건 대상이 모호하면 추측하지 말고 reviewNotes에 확인이 필요하다고 남기세요.
 suggestedSettings에는 문서에 근거해 참여 정책, 응답자 정보, 접수 일정, 최대 응답 수, 제출 후 동작, 공유 제목·설명을 추천하세요.
 publicSlug는 폼 제목을 설명하는 짧은 영문 소문자·숫자·하이픈 주소로 만드세요. 날짜는 문서에 있으면 startsAt/closesAt에 ISO 형식으로, suggestedEndDate에는 YYYY-MM-DD로 적으세요.
 강남대학교 공식 행사·사업이면 suggestedTheme은 kangnam, 계절성이 명확하면 해당 계절, 아니면 green을 사용하세요.
 문서에 없는 사실은 만들지 말고 문자열은 빈 값, 숫자는 0, 보수적인 기본값을 사용한 뒤 reviewNotes에 확인할 내용을 남기세요.
 개인정보 질문은 꼭 필요한 최소한만 만드세요. 메모: ${memo || '없음'}`
   const result = await model.generateContent([...parts, { text: prompt }])
-  const parsed = JSON.parse(result.response.text()) as Omit<GeneratedForm, 'questions'> & { questions: Array<Omit<FormQuestion, 'id'>> }
+  type AiQuestion = Omit<FormQuestion, 'id' | 'branch'> & {
+    branchRules?: Array<{ option: string; action: 'next' | 'section' | 'submit'; targetSectionId: string }>
+  }
+  const parsed = JSON.parse(result.response.text()) as Omit<GeneratedForm, 'questions'> & { questions: AiQuestion[] }
+  const rawSectionIds = [...new Set(parsed.questions.map((question) => question.sectionId?.trim()).filter((value): value is string => Boolean(value)))]
+  const sectionIds = new Map(rawSectionIds.map((raw, index) => {
+    const slug = raw.toLowerCase().replace(/[^a-z0-9가-힣-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48)
+    return [raw, slug ? `section-${slug}` : `section-${index + 1}`]
+  }))
+  const routingReviewNotes: string[] = []
+  const normalizedQuestions = parsed.questions.map((question, index) => {
+    const selectable = question.type === 'select' || question.type === 'checkbox'
+    const options = question.options?.map((option) => option.trim()).filter(Boolean) ?? []
+    const rawSectionId = question.sectionId?.trim()
+    const sectionId = rawSectionId ? sectionIds.get(rawSectionId) : undefined
+    const rawSectionNext = question.sectionNext?.trim()
+    const sectionNext = rawSectionNext === 'submit' ? 'submit' : rawSectionNext ? sectionIds.get(rawSectionNext) : undefined
+    const branch = question.type === 'select' ? Object.fromEntries((question.branchRules ?? []).flatMap((rule) => {
+      if (!options.includes(rule.option) || rule.action === 'next') return []
+      if (rule.action === 'submit') return [[rule.option, 'submit']]
+      const target = sectionIds.get(rule.targetSectionId.trim())
+      if (!target) {
+        routingReviewNotes.push(`“${question.label}”의 “${rule.option}” 선택지가 존재하지 않는 섹션을 가리켜 이동 규칙을 적용하지 않았습니다.`)
+        return []
+      }
+      return [[rule.option, target]]
+    })) : undefined
+    const { branchRules: _branchRules, ...formQuestion } = question
+    void _branchRules
+    return {
+      ...formQuestion,
+      id: Date.now() + index,
+      inputFormat: question.type === 'short_text' && ['email', 'phone'].includes(question.inputFormat ?? '') ? question.inputFormat : 'none',
+      options: selectable ? (options.length >= 2 ? options : ['선택지 1', '선택지 2']) : undefined,
+      sectionId,
+      sectionTitle: sectionId ? question.sectionTitle?.trim() || '제목 없는 섹션' : undefined,
+      sectionNext,
+      branch: branch && Object.keys(branch).length ? branch : undefined,
+    } satisfies FormQuestion
+  })
   return {
     ...parsed,
-    questions: parsed.questions.map((question, index) => {
-      const selectable = question.type === 'select' || question.type === 'checkbox'
-      const options = question.options?.map((option) => option.trim()).filter(Boolean) ?? []
-      return {
-        ...question,
-        id: Date.now() + index,
-        inputFormat: question.type === 'short_text' && ['email', 'phone'].includes(question.inputFormat ?? '') ? question.inputFormat : 'none',
-        options: selectable ? (options.length >= 2 ? options : ['선택지 1', '선택지 2']) : undefined,
-      }
-    }),
+    reviewNotes: [...parsed.reviewNotes, ...routingReviewNotes],
+    questions: normalizedQuestions,
   }
 }
 
