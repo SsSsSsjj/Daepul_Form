@@ -3,11 +3,19 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defaultFormSettings } from '../../types'
+import { toLocalDateTimeInputValue } from './dateTime'
 import { FormPolicyEditor } from './FormPolicyEditor'
 
 afterEach(cleanup)
 
 describe('FormPolicyEditor branding guidance', () => {
+  it('round-trips the selected local date and time without a timezone shift', () => {
+    const selectedLocalTime = '2026-07-24T01:00'
+    const storedUtcTime = new Date(selectedLocalTime).toISOString()
+
+    expect(toLocalDateTimeInputValue(storedUtcTime)).toBe(selectedLocalTime)
+  })
+
   it('shows understandable receipt and integration explanations', () => {
     render(<FormPolicyEditor value={defaultFormSettings} onChange={() => undefined}/>)
 

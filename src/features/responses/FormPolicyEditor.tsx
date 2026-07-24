@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Bell, Building2, CalendarClock, LockKeyhole, Mail, Settings2, Trophy, Type, Users } from 'lucide-react'
 import type { FormSettings, FormLifecycleStatus, IdentityCollection, ParticipationPolicy } from '../../types'
+import { toLocalDateTimeInputValue } from './dateTime'
 
 export function FormPolicyEditor({
   value,
@@ -70,8 +71,8 @@ export function FormPolicyEditor({
           <option value="open">접수 중</option><option value="scheduled">시작 전</option><option value="paused">일시중지</option><option value="closed">마감</option><option value="private">비공개</option>
         </select>
       </label>
-      <div className="grid two"><label>시작 시각<input type="datetime-local" value={value.schedule.startsAt?.slice(0, 16) ?? ''} onChange={(event) => updateSchedule({ startsAt: event.target.value ? new Date(event.target.value).toISOString() : undefined })}/></label>
-        <label>마감 시각<input type="datetime-local" value={value.schedule.closesAt?.slice(0, 16) ?? ''} onChange={(event) => updateSchedule({ closesAt: event.target.value ? new Date(event.target.value).toISOString() : undefined })}/></label></div>
+      <div className="grid two"><label>시작 시각<input type="datetime-local" value={toLocalDateTimeInputValue(value.schedule.startsAt)} onChange={(event) => updateSchedule({ startsAt: event.target.value ? new Date(event.target.value).toISOString() : undefined })}/></label>
+        <label>마감 시각<input type="datetime-local" value={toLocalDateTimeInputValue(value.schedule.closesAt)} onChange={(event) => updateSchedule({ closesAt: event.target.value ? new Date(event.target.value).toISOString() : undefined })}/></label></div>
       <label>최대 응답 수<input type="number" min="1" value={value.submission.maxResponses ?? ''} onChange={(event) => updateSubmission({ maxResponses: event.target.value ? Number(event.target.value) : undefined })}/></label>
     </section>
 
