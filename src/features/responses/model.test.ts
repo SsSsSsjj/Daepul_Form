@@ -79,6 +79,23 @@ describe('public response model', () => {
     expect(page.items[0].respondentName).toBe('김민준')
   })
 
+  it('returns every filtered response when an export requests all rows', () => {
+    const responses = createSampleResponses(questions, 260)
+    const page = queryResponses(responses, {
+      filters: { query: '', status: 'all', selectedIds: [] },
+      sortBy: 'submittedAt',
+      sortDirection: 'desc',
+      page: 2,
+      pageSize: 25,
+    }, true)
+
+    expect(page.items).toHaveLength(260)
+    expect(page.page).toBe(1)
+    expect(page.total).toBe(260)
+    expect(page.overallTotal).toBe(260)
+    expect(page.hasMore).toBe(false)
+  })
+
   it('escapes spreadsheet formulas and quotes as CSV text', () => {
     const response: StoredFormResponse = { id: '1', answers: { 1: '="quoted"', 2: 5 } }
     const csv = responsesToCsv(questions, [response])

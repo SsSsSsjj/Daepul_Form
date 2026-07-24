@@ -129,7 +129,8 @@ service cloud.firestore {
         allow read: if canManageForm(formId);
         allow create: if canEditForm(formId)
           && request.resource.data.createdBy == request.auth.uid;
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if canEditForm(formId);
       }
 
       match /quiz/{documentId} {
