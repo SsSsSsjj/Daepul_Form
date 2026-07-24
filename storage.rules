@@ -30,5 +30,15 @@ service firebase.storage {
       allow update: if false;
       allow delete: if ownsForm(formId) || (signedIn() && actorId == request.auth.uid);
     }
+
+    match /form-images/{ownerUid}/{formId}/{fileName} {
+      allow create: if signedIn()
+        && ownerUid == request.auth.uid
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow read: if signedIn();
+      allow update: if false;
+      allow delete: if signedIn() && ownerUid == request.auth.uid;
+    }
   }
 }

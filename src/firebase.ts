@@ -237,8 +237,9 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
     const existingForm = await getDoc(doc(db, 'forms', formId))
     if (existingForm.exists()) {
       responseCount = Number(existingForm.data().responseCount ?? 0)
-      const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options, inputFormat, maxSelections }) => ({
+      const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options, inputFormat, maxSelections, imageUrl, optionImageUrls }) => ({
         id, label, type, required, options: options ?? [], inputFormat: inputFormat ?? 'none', maxSelections: maxSelections ?? null,
+        imageUrl: imageUrl ?? '', optionImageUrls: optionImageUrls ?? [],
       }))
       const previousQuestions = (existingForm.data().questions ?? []) as FormQuestion[]
       const questionsChanged = JSON.stringify(normalizeQuestions(previousQuestions)) !== JSON.stringify(normalizeQuestions(questions))
@@ -620,6 +621,37 @@ export function uploadResponseAttachment({
         downloadUrl: await getDownloadURL(upload.snapshot.ref),
       })
     })
+  })
+}
+
+const supportedFormImageExtensions = new Set([
+  'pjp', 'jfif', 'jpe', 'pjpeg', 'jpeg', 'jpg', 'gif', 'png', 'tif', 'tiff', 'bmp', 'heic', 'heif', 'ico', 'webp',
+])
+
+export function uploadFormImage({
+  formId,
+  user,
+  file,
+  onProgress,
+}: {
+  formId: string
+  user: User
+  file: File
+  onProgress?: (percentage: number) => void
+}) {
+  if (!storage) return Promise.reject(new Error('Firebase Storage가 설정되지 않았습니다.'))
+  const extension=file.name.split('.').pop()?.toLowerCase()??''
+  if (!supportedFormImageExtensions.has(extension)) return Promise.reject(new Error('unsupported-image-type'))
+  if (file.size > 20 * 1024 * 1024) return Promise.reject(new Error('image-too-large'))
+  const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(-100)
+  const path=`form-images/${user.uid}/${formId}/${crypto.randomUUID()}-${safeName}`
+  const upload=uploadBytesResumable(ref(storage,path),file,{contentType:file.type||`image/${extension}`})
+  return new Promise<string>((resolve,reject)=>{
+    upload.on('state_changed',
+      (snapshot)=>onProgress?.(Math.round(snapshot.bytesTransferred/Math.max(1,snapshot.totalBytes)*100)),
+      reject,
+      ()=>void getDownloadURL(upload.snapshot.ref).then(resolve,reject),
+    )
   })
 }
 
