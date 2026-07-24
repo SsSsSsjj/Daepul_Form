@@ -6,9 +6,45 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function creatorSignedIn() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
     function ownsForm(formId) {
       return signedIn()
         && get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid == request.auth.uid;
+    }
+
+    function canManageForm(formId) {
+      let form = get(/databases/$(database)/documents/forms/$(formId)).data;
+      return signedIn() && (
+        form.ownerUid == request.auth.uid
+        || (
+          'collaborators' in form
+          && form.collaborators[request.auth.uid] in ['viewer', 'editor']
+        )
+      );
+    }
+
+    function canEditForm(formId) {
+      let form = get(/databases/$(database)/documents/forms/$(formId)).data;
+      return signedIn() && (
+        form.ownerUid == request.auth.uid
+        || (
+          'collaborators' in form
+          && form.collaborators[request.auth.uid] == 'editor'
+        )
+      );
+    }
+
+    function participantAllowed(form) {
+      let email = request.auth.token.email;
+      return !('settings' in form)
+        ? request.auth.token.firebase.sign_in_provider != 'anonymous'
+        : form.settings.access.participation == 'anyone'
+          || (form.settings.access.participation == 'authenticated' && request.auth.token.firebase.sign_in_provider != 'anonymous')
+          || (form.settings.access.participation == 'kangnam' && request.auth.token.email_verified == true && email.matches('.*@kangnam[.]ac[.]kr$'))
+          || (form.settings.access.participation == 'allowlist' && request.auth.token.email_verified == true && email in form.settings.access.allowedEmails);
     }
 
     match /oauthStates/{stateId} {
@@ -20,27 +56,52 @@ service cloud.firestore {
     }
 
     match /forms/{formId} {
-      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow read: if signedIn() && (resource.data.published == true || resource.data.ownerUid == request.auth.uid);
-      allow update: if ownsForm(formId) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow create: if creatorSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if signedIn() && (resource.data.published == true || canManageForm(formId));
+      allow update: if canEditForm(formId) && request.resource.data.ownerUid == resource.data.ownerUid;
       allow delete: if ownsForm(formId);
 
-      match /responses/{responseUid} {
+      match /responses/{responseId} {
+        function form() {
+          return get(/databases/$(database)/documents/forms/$(formId)).data;
+        }
+
         allow create: if signedIn()
-          && responseUid == request.auth.uid
-          && !exists(/databases/$(database)/documents/forms/$(formId)/responses/$(responseUid))
-          && get(/databases/$(database)/documents/forms/$(formId)).data.published == true;
+          && !exists(/databases/$(database)/documents/forms/$(formId)/responses/$(responseId))
+          && form().published == true
+          && (!('settings' in form()) || form().settings.schedule.status == 'open')
+          && (!('surveyEndAt' in form()) || request.time <= form().surveyEndAt)
+          && participantAllowed(form())
+          && (
+            (request.auth.token.firebase.sign_in_provider == 'anonymous'
+              && request.resource.data.anonymousId == request.auth.uid)
+            || (request.auth.token.firebase.sign_in_provider != 'anonymous'
+              && request.resource.data.respondentUid == request.auth.uid)
+          )
+          && (!('settings' in form()) || form().settings.access.allowMultiple == true || responseId == request.auth.uid);
         // Respondents need to read only their own document so the client can
         // detect an existing submission before attempting an immutable create.
-        allow read: if ownsForm(formId)
-          || (signedIn() && responseUid == request.auth.uid);
-        allow update: if false;
-        allow delete: if ownsForm(formId);
+        allow read: if canManageForm(formId)
+          || (signedIn() && (
+            resource.data.respondentUid == request.auth.uid
+            || resource.data.anonymousId == request.auth.uid
+          ));
+        allow update: if canManageForm(formId)
+          || (signedIn()
+            && ('settings' in form())
+            && form().settings.submission.allowEditAfterSubmit == true
+            && request.resource.data.responseId == resource.data.responseId
+            && (resource.data.respondentUid == request.auth.uid || resource.data.anonymousId == request.auth.uid));
+        allow delete: if canEditForm(formId);
+      }
+
+      match /drafts/{actorId} {
+        allow read, create, update, delete: if signedIn() && actorId == request.auth.uid;
       }
 
       match /analysis/{analysisId} {
-        allow read, create, update: if ownsForm(formId);
-        allow delete: if ownsForm(formId);
+        allow read, create, update: if canManageForm(formId);
+        allow delete: if canEditForm(formId);
       }
     }
   }

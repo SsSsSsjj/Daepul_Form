@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { deleteApp, initializeApp } from 'firebase/app'
-import { connectAuthEmulator, getAuth, signInAnonymously } from 'firebase/auth'
+import { connectAuthEmulator, createUserWithEmailAndPassword, getAuth, signInAnonymously } from 'firebase/auth'
 import {
   connectFirestoreEmulator,
   deleteDoc,
@@ -20,11 +20,13 @@ function emulatorAddress(value) {
   return { host: url.hostname, port: Number(url.port) }
 }
 
-async function createClient(name) {
+async function createClient(name, anonymous = true) {
   const app = initializeApp({ apiKey: 'demo-key', projectId }, name)
   const auth = getAuth(app)
   connectAuthEmulator(auth, `http://${authHost}`, { disableWarnings: true })
-  const user = (await signInAnonymously(auth)).user
+  const user = anonymous
+    ? (await signInAnonymously(auth)).user
+    : (await createUserWithEmailAndPassword(auth, `${name}@test.local`, 'test-password-123')).user
   const db = getFirestore(app)
   const { host, port } = emulatorAddress(firestoreHost)
   connectFirestoreEmulator(db, host, port)
@@ -38,7 +40,7 @@ async function assertDenied(operation, label) {
   })
 }
 
-const owner = await createClient('rules-owner')
+const owner = await createClient('rules-owner', false)
 const respondent = await createClient('rules-respondent')
 const stranger = await createClient('rules-stranger')
 const formId = `rules-${Date.now()}`
@@ -47,15 +49,26 @@ const responseRef = doc(respondent.db, 'forms', formId, 'responses', respondent.
 
 try {
   await assertDenied(getDoc(formRef), 'A missing form cannot be read before its owner creates it')
-  await setDoc(formRef, { ownerUid: owner.user.uid, published: true })
+  await setDoc(formRef, {
+    ownerUid: owner.user.uid,
+    published: true,
+    settings: {
+      access: { participation: 'anyone', allowMultiple: false, allowedEmails: [] },
+      schedule: { status: 'open' },
+      submission: { allowEditAfterSubmit: false },
+    },
+  })
 
   const initialResponse = await getDoc(responseRef)
   assert.equal(initialResponse.exists(), false, 'A respondent can check that their own response is absent')
 
   await setDoc(responseRef, {
+    responseId: respondent.user.uid,
     formId,
-    userUid: respondent.user.uid,
+    respondentUid: null,
+    anonymousId: respondent.user.uid,
     answers: { 1: 'test' },
+    status: 'submitted',
     immutable: true,
   })
   assert.equal((await getDoc(responseRef)).exists(), true, 'A respondent can read their own response')

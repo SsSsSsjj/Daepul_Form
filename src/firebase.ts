@@ -3,11 +3,17 @@ import { getAnalytics, isSupported } from 'firebase/analytics'
 import { ReCaptchaEnterpriseProvider, initializeAppCheck } from 'firebase/app-check'
 import {
   browserLocalPersistence, GoogleAuthProvider, getAuth, isSignInWithEmailLink, onAuthStateChanged,
-  sendSignInLinkToEmail, setPersistence, signInWithEmailLink, signInWithPopup, signInWithRedirect, signOut, type User,
+  sendSignInLinkToEmail, setPersistence, signInAnonymously, signInWithEmailLink, signInWithPopup, signInWithRedirect, signOut, type User,
 } from 'firebase/auth'
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
-import { Timestamp, collection, doc, getDoc, getDocs, getFirestore, limit, query, serverTimestamp, setDoc, where, writeBatch } from 'firebase/firestore'
-import type { FormQuestion, FormType, GeneratedForm, ProgramInfo, ResponseTopic, ResultStats, StoredFormResponse } from './types'
+import { Timestamp, collection, doc, getDoc, getDocs, getFirestore, limit, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { getFunctions, httpsCallable } from 'firebase/functions'
+import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage'
+import {
+  defaultFormSettings,
+  type FormQuestion, type FormSettings, type FormType, type GeneratedForm, type ProgramInfo,
+  type ResponseAttachment, type ResponseDraft, type ResponseTopic, type ResultStats, type StoredFormResponse,
+} from './types'
 import { extractHwpText, isHwpFile } from './hwp'
 
 const firebaseConfig = {
@@ -42,6 +48,8 @@ if (firebaseApp && import.meta.env.DEV) {
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null
 export const db = firebaseApp ? getFirestore(firebaseApp) : null
+const functions = firebaseApp ? getFunctions(firebaseApp, 'asia-northeast3') : null
+const storage = firebaseApp ? getStorage(firebaseApp) : null
 if (auth) auth.languageCode = 'ko'
 const googleProvider = new GoogleAuthProvider()
 googleProvider.setCustomParameters({ prompt: 'select_account' })
@@ -71,6 +79,12 @@ export async function signInWithGoogle() {
     }
     throw error
   }
+}
+
+export async function signInAsGuest() {
+  if (!auth) throw new Error('Firebase가 설정되지 않았습니다.')
+  await setPersistence(auth, browserLocalPersistence).catch(() => undefined)
+  return (await signInAnonymously(auth)).user
 }
 
 function currentReturnTo() {
@@ -198,10 +212,19 @@ function expirationFromSurveyEnd(surveyEndDate: string) {
   return Timestamp.fromDate(expiration)
 }
 
-export async function publishFormRecord({ formId, owner, program, questions, surveyEndDate, formType = 'general', theme = 'green', checkForExistingResponses = false }: {
-  formId: string; owner: User; program: ProgramInfo; questions: FormQuestion[]; surveyEndDate: string; formType?: FormType; theme?: string; checkForExistingResponses?: boolean
+export async function publishFormRecord({ formId, owner, program, questions, surveyEndDate, formType = 'general', theme = 'green', settings = defaultFormSettings, checkForExistingResponses = false }: {
+  formId: string; owner: User; program: ProgramInfo; questions: FormQuestion[]; surveyEndDate: string; formType?: FormType; theme?: string; settings?: FormSettings; checkForExistingResponses?: boolean
 }) {
   if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
+  if (settings.publicSlug) {
+    const slugMatches = await getDocs(query(
+      collection(db, 'forms'),
+      where('settings.publicSlug', '==', settings.publicSlug),
+      where('published', '==', true),
+      limit(2),
+    ))
+    if (slugMatches.docs.some((item) => item.id !== formId)) throw new Error('public-slug-in-use')
+  }
   let targetFormId = formId
   if (checkForExistingResponses) {
     const existingForm = await getDoc(doc(db, 'forms', formId))
@@ -219,7 +242,8 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
   }
 
   await setDoc(doc(db, 'forms', targetFormId), {
-    ownerUid: owner.uid, ownerEmail: owner.email, program, questions, formType, theme, published: true,
+    ownerUid: owner.uid, ownerEmail: owner.email, program, questions, formType, theme, settings,
+    published: settings.schedule.status !== 'private',
     surveyEndAt: Timestamp.fromDate(new Date(`${surveyEndDate}T23:59:59+09:00`)),
     expireAt: expirationFromSurveyEnd(surveyEndDate), updatedAt: serverTimestamp(),
   }, { merge: true })
@@ -231,15 +255,27 @@ export async function hasSubmittedResponse(formId: string, userUid: string) {
   return (await getDoc(doc(db, 'forms', formId, 'responses', userUid))).exists()
 }
 
-export async function getPublishedForm(formId: string) {
+export async function getPublishedForm(formId: string, includePrivate = false) {
   if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
-  const snapshot = await getDoc(doc(db, 'forms', formId))
-  if (!snapshot.exists() || snapshot.data().published !== true) throw new Error('published-form-not-found')
+  let snapshot = await getDoc(doc(db, 'forms', formId))
+  if (!snapshot.exists() && !includePrivate) {
+    const slugMatches = await getDocs(query(
+      collection(db, 'forms'),
+      where('settings.publicSlug', '==', formId),
+      where('published', '==', true),
+      limit(1),
+    ))
+    if (!slugMatches.empty) snapshot = slugMatches.docs[0]
+  }
+  if (!snapshot.exists() || (!includePrivate && snapshot.data().published !== true)) throw new Error('published-form-not-found')
   const data = snapshot.data()
   return {
+    id: snapshot.id,
     program: data.program as ProgramInfo,
     questions: data.questions as FormQuestion[],
     formType: (data.formType ?? 'general') as FormType, theme: String(data.theme ?? 'green'),
+    settings: { ...defaultFormSettings, ...(data.settings ?? {}) } as FormSettings,
+    responseCount: Number(data.responseCount ?? 0),
     surveyEndDate: data.surveyEndAt instanceof Timestamp ? data.surveyEndAt.toDate().toISOString().slice(0, 10) : '',
   }
 }
@@ -250,7 +286,15 @@ export async function getOwnedForms(userUid: string) {
   return Promise.all(snapshot.docs.map(async (item) => {
     const responses = await getDocs(collection(db, 'forms', item.id, 'responses'))
     const data = item.data()
-    return { id: item.id, title: String(data.program?.programName ?? '제목 없는 폼'), published: data.published === true, responseCount: responses.size }
+    return {
+      id: item.id,
+      title: String(data.program?.programName ?? '제목 없는 폼'),
+      published: data.published === true,
+      status: String(data.settings?.schedule?.status ?? (data.published ? 'open' : 'draft')),
+      closesAt: String(data.settings?.schedule?.closesAt ?? ''),
+      publicSlug: String(data.settings?.publicSlug ?? ''),
+      responseCount: Number(data.responseCount ?? responses.size),
+    }
   }))
 }
 
@@ -270,16 +314,118 @@ export async function deleteFormRecord(formId: string) {
 export async function getFormResponses(formId: string): Promise<StoredFormResponse[]> {
   if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
   const snapshot = await getDocs(collection(db, 'forms', formId, 'responses'))
-  return snapshot.docs.map((item) => ({ id: item.id, answers: item.data().answers ?? {} }))
+  return snapshot.docs.map((item) => {
+    const data = item.data()
+    return {
+      id: item.id,
+      responseId: String(data.responseId ?? item.id),
+      formId,
+      answers: data.answers ?? {},
+      submittedAt: data.submittedAt instanceof Timestamp ? data.submittedAt.toDate().toISOString() : '',
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : '',
+      respondentUid: String(data.respondentUid ?? data.userUid ?? ''),
+      anonymousId: String(data.anonymousId ?? ''),
+      respondentEmail: String(data.respondentEmail ?? ''),
+      respondentName: String(data.respondentName ?? ''),
+      studentId: String(data.studentId ?? ''),
+      status: data.status ?? 'submitted',
+      formVersion: Number(data.formVersion ?? 1),
+      attachments: data.attachments ?? [],
+    }
+  })
 }
 
-export async function submitResponseOnce({ formId, user, answers, surveyEndDate, questions }: {
-  formId: string; user: User; answers: Record<number, string | boolean | number>; surveyEndDate: string; questions: FormQuestion[]
-}) {
+export async function updateFormLifecycle(formId: string, status: FormSettings['schedule']['status']) {
   if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
-  const responseRef = doc(db, 'forms', formId, 'responses', user.uid)
-  if ((await getDoc(responseRef)).exists()) throw new Error('already-submitted')
-  await setDoc(responseRef, { formId, userUid: user.uid, answers, questions, submittedAt: serverTimestamp(), expireAt: expirationFromSurveyEnd(surveyEndDate), immutable: true })
+  await updateDoc(doc(db, 'forms', formId), {
+    'settings.schedule.status': status,
+    published: status !== 'private',
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export async function submitResponseOnce({ formId, user, answers, surveyEndDate, questions, settings = defaultFormSettings, respondentEmail = '', respondentName = '', studentId = '', attachments = [] }: {
+  formId: string
+  user: User
+  answers: Record<number, string | boolean | number>
+  surveyEndDate: string
+  questions: FormQuestion[]
+  settings?: FormSettings
+  respondentEmail?: string
+  respondentName?: string
+  studentId?: string
+  attachments?: ResponseAttachment[]
+}) {
+  if (!functions) throw new Error('Firebase Functions가 설정되지 않았습니다.')
+  void user
+  void surveyEndDate
+  void questions
+  void settings
+  try {
+    await httpsCallable(functions, 'submitFormResponse')({
+      formId,
+      answers,
+      respondentEmail,
+      respondentName,
+      studentId,
+      attachments,
+    })
+  } catch (error) {
+    const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+    if (code.endsWith('already-exists')) throw new Error('already-submitted')
+    throw error
+  }
+}
+
+export function uploadResponseAttachment({
+  formId, user, questionId, file, onProgress,
+}: {
+  formId: string
+  user: User
+  questionId: number
+  file: File
+  onProgress: (percentage: number) => void
+}) {
+  if (!storage) return Promise.reject(new Error('Firebase Storage가 설정되지 않았습니다.'))
+  if (file.size > 20 * 1024 * 1024) return Promise.reject(new Error('file-too-large'))
+  const safeName = file.name.replace(/[^0-9A-Za-z가-힣._-]/g, '_').slice(0, 120)
+  const path = `response-files/${formId}/${user.uid}/${crypto.randomUUID()}-${safeName}`
+  const upload = uploadBytesResumable(ref(storage, path), file, { contentType: file.type || 'application/octet-stream' })
+  return new Promise<ResponseAttachment>((resolve, reject) => {
+    upload.on('state_changed', (snapshot) => onProgress(Math.round(snapshot.bytesTransferred / snapshot.totalBytes * 100)), reject, async () => {
+      resolve({
+        id: crypto.randomUUID(),
+        questionId,
+        name: file.name,
+        contentType: file.type,
+        size: file.size,
+        path,
+        downloadUrl: await getDownloadURL(upload.snapshot.ref),
+      })
+    })
+  })
+}
+
+export async function saveResponseDraft(draft: ResponseDraft) {
+  if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
+  await setDoc(doc(db, 'forms', draft.formId, 'drafts', draft.actorId), {
+    ...draft,
+    updatedAt: serverTimestamp(),
+  }, { merge: true })
+}
+
+export async function loadResponseDraft(formId: string, actorId: string): Promise<ResponseDraft | null> {
+  if (!db) return null
+  const snapshot = await getDoc(doc(db, 'forms', formId, 'drafts', actorId))
+  if (!snapshot.exists()) return null
+  const data = snapshot.data()
+  return {
+    formId,
+    actorId,
+    formVersion: Number(data.formVersion ?? 1),
+    answers: data.answers ?? {},
+    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : '',
+  }
 }
 
 const formSchema = Schema.object({ properties: {
@@ -289,7 +435,7 @@ const formSchema = Schema.object({ properties: {
     schedule: Schema.string(), capacity: Schema.string(), requirements: Schema.string(), privacyConsent: Schema.string(),
   }}),
   questions: Schema.array({ items: Schema.object({ properties: {
-    label: Schema.string(), type: Schema.enumString({ enum: ['short_text', 'long_text', 'select', 'checkbox', 'consent', 'rating', 'number'] }),
+    label: Schema.string(), type: Schema.enumString({ enum: ['short_text', 'long_text', 'select', 'checkbox', 'consent', 'rating', 'number', 'file'] }),
     required: Schema.boolean(), options: Schema.array({ items: Schema.string() }),
   }, optionalProperties: ['options'] }) }),
   reviewNotes: Schema.array({ items: Schema.string() }),
