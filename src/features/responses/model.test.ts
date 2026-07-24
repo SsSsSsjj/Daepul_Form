@@ -33,6 +33,24 @@ describe('public response model', () => {
     expect(validateAnswers(questions, { 1: '홍길동', 2: 4 })).toEqual({})
   })
 
+  it('returns field-level email and Korean mobile phone format errors', () => {
+    const formattedQuestions: FormQuestion[] = [
+      { id: 10, label: '이메일', type: 'short_text', required: true, inputFormat: 'email' },
+      { id: 11, label: '전화번호', type: 'short_text', required: true, inputFormat: 'phone' },
+    ]
+    expect(validateAnswers(formattedQuestions, { 10: 'wrong', 11: '01012345678' })).toEqual({
+      10: '이메일 형식에 맞게 입력해 주세요. 예: name@example.com',
+      11: '전화번호 형식에 맞게 입력해 주세요. 예: 010-0000-0000',
+    })
+    expect(validateAnswers(formattedQuestions, { 10: 'student@kangnam.ac.kr', 11: '010-1234-5678' })).toEqual({})
+  })
+
+  it('creates multi-select sample answers from configured checkbox options', () => {
+    const checkbox: FormQuestion = { id: 12, label: '관심 분야', type: 'checkbox', required: false, options: ['진로', '취업', '창업'] }
+    const [sample] = createSampleResponses([checkbox], 1)
+    expect(sample.answers['12']).toEqual(['진로', '창업'])
+  })
+
   it('searches, sorts and paginates response metadata and answers', () => {
     const responses = createSampleResponses(questions, 60)
     const page = queryResponses(responses, {

@@ -144,6 +144,7 @@ export interface FormQuestion {
   min?: number
   max?: number
   pattern?: string
+  inputFormat?: 'none' | 'email' | 'phone'
   branch?: Record<string, string | 'submit'>
   randomizeOptions?: boolean
   points?: number
