@@ -50,7 +50,10 @@ const responseRef = doc(respondent.db, 'forms', formId, 'responses', respondent.
 try {
   await assertDenied(getDoc(formRef), 'A missing form cannot be read before its owner creates it')
   await setDoc(formRef, {
+    formId,
+    creatorUid: owner.user.uid,
     ownerUid: owner.user.uid,
+    responseCount: 0,
     published: true,
     settings: {
       access: { participation: 'anyone', allowMultiple: false, allowedEmails: [] },
@@ -62,21 +65,39 @@ try {
   const initialResponse = await getDoc(responseRef)
   assert.equal(initialResponse.exists(), false, 'A respondent can check that their own response is absent')
 
-  await setDoc(responseRef, {
+  await assertDenied(setDoc(responseRef, {
     responseId: respondent.user.uid,
     formId,
     respondentUid: null,
     anonymousId: respondent.user.uid,
-    answers: { 1: 'test' },
+    answers: { 1: 'bypass' },
     status: 'submitted',
-    immutable: true,
+  }), 'Respondents cannot bypass the callable submission transaction')
+
+  const adminUrl = `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents/forms/${formId}/responses/${respondent.user.uid}`
+  const adminResponse = await fetch(adminUrl, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer owner',
+    },
+    body: JSON.stringify({
+      fields: {
+        responseId: { stringValue: respondent.user.uid },
+        formId: { stringValue: formId },
+        anonymousId: { stringValue: respondent.user.uid },
+        answers: { mapValue: { fields: { 1: { stringValue: 'test' } } } },
+        status: { stringValue: 'submitted' },
+      },
+    }),
   })
+  assert.equal(adminResponse.ok, true, 'Cloud Functions Admin SDK equivalent can create a response')
   assert.equal((await getDoc(responseRef)).exists(), true, 'A respondent can read their own response')
 
   const strangerResponseRef = doc(stranger.db, 'forms', formId, 'responses', respondent.user.uid)
   await assertDenied(getDoc(strangerResponseRef), 'Another respondent cannot read the response')
   await assertDenied(setDoc(strangerResponseRef, { answers: { 1: 'forged' } }), 'Another respondent cannot overwrite the response')
-  await assertDenied(setDoc(responseRef, { answers: { 1: 'duplicate' } }), 'A respondent cannot submit twice')
+  await assertDenied(setDoc(responseRef, { answers: { 1: 'duplicate' } }), 'A respondent cannot submit directly')
   await assertDenied(updateDoc(responseRef, { answers: { 1: 'changed' } }), 'A respondent cannot update the response')
   await assertDenied(deleteDoc(responseRef), 'A respondent cannot delete the response')
 

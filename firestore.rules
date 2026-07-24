@@ -56,9 +56,25 @@ service cloud.firestore {
     }
 
     match /forms/{formId} {
-      allow create: if creatorSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow create: if creatorSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.creatorUid == request.auth.uid
+        && request.resource.data.formId == formId;
       allow read: if signedIn() && (resource.data.published == true || canManageForm(formId));
-      allow update: if canEditForm(formId) && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow update: if canEditForm(formId)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && (
+          ('creatorUid' in resource.data && request.resource.data.creatorUid == resource.data.creatorUid)
+          || (!('creatorUid' in resource.data) && request.resource.data.creatorUid == resource.data.ownerUid)
+        )
+        && (
+          ('formId' in resource.data && request.resource.data.formId == resource.data.formId)
+          || (!('formId' in resource.data) && request.resource.data.formId == formId)
+        )
+        && (
+          ('responseCount' in resource.data && request.resource.data.responseCount == resource.data.responseCount)
+          || (!('responseCount' in resource.data) && request.resource.data.responseCount == 0)
+        );
       allow delete: if ownsForm(formId);
 
       match /responses/{responseId} {
@@ -66,32 +82,18 @@ service cloud.firestore {
           return get(/databases/$(database)/documents/forms/$(formId)).data;
         }
 
-        allow create: if signedIn()
-          && !exists(/databases/$(database)/documents/forms/$(formId)/responses/$(responseId))
-          && form().published == true
-          && (!('settings' in form()) || form().settings.schedule.status == 'open')
-          && (!('surveyEndAt' in form()) || request.time <= form().surveyEndAt)
-          && participantAllowed(form())
-          && (
-            (request.auth.token.firebase.sign_in_provider == 'anonymous'
-              && request.resource.data.anonymousId == request.auth.uid)
-            || (request.auth.token.firebase.sign_in_provider != 'anonymous'
-              && request.resource.data.respondentUid == request.auth.uid)
-          )
-          && (!('settings' in form()) || form().settings.access.allowMultiple == true || responseId == request.auth.uid);
+        // Submission creation and edits go through the callable transaction,
+        // which atomically validates schedule, capacity, access, and duplicates.
+        allow create, update: if false;
         // Respondents need to read only their own document so the client can
         // detect an existing submission before attempting an immutable create.
-        allow read: if canManageForm(formId)
+        allow get: if canManageForm(formId)
           || (signedIn() && (
-            resource.data.respondentUid == request.auth.uid
+            responseId == request.auth.uid
+            || resource.data.respondentUid == request.auth.uid
             || resource.data.anonymousId == request.auth.uid
           ));
-        allow update: if canManageForm(formId)
-          || (signedIn()
-            && ('settings' in form())
-            && form().settings.submission.allowEditAfterSubmit == true
-            && request.resource.data.responseId == resource.data.responseId
-            && (resource.data.respondentUid == request.auth.uid || resource.data.anonymousId == request.auth.uid));
+        allow list: if canManageForm(formId);
         allow delete: if canEditForm(formId);
       }
 
@@ -103,6 +105,23 @@ service cloud.firestore {
         allow read, create, update: if canManageForm(formId);
         allow delete: if canEditForm(formId);
       }
+
+      match /versions/{versionId} {
+        allow read, create: if canManageForm(formId);
+        allow update, delete: if false;
+      }
+    }
+
+    match /formDrafts/{draftId} {
+      allow create: if creatorSignedIn() && request.resource.data.creatorUid == request.auth.uid;
+      allow read, delete: if creatorSignedIn() && resource.data.creatorUid == request.auth.uid;
+      allow update: if creatorSignedIn()
+        && resource.data.creatorUid == request.auth.uid
+        && request.resource.data.creatorUid == resource.data.creatorUid;
+    }
+
+    match /formSlugs/{slugId} {
+      allow read, write: if false;
     }
   }
 }

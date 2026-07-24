@@ -15,6 +15,7 @@ import {
   type ResponseAttachment, type ResponseDraft, type ResponseTopic, type ResultStats, type StoredFormResponse,
 } from './types'
 import { extractHwpText, isHwpFile } from './hwp'
+import { createFormService } from './formService'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -48,6 +49,7 @@ if (firebaseApp && import.meta.env.DEV) {
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null
 export const db = firebaseApp ? getFirestore(firebaseApp) : null
+export const formService = createFormService(firebaseApp)
 const functions = firebaseApp ? getFunctions(firebaseApp, 'asia-northeast3') : null
 const storage = firebaseApp ? getStorage(firebaseApp) : null
 if (auth) auth.languageCode = 'ko'
@@ -241,8 +243,19 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
     }
   }
 
+  const targetSnapshot = await getDoc(doc(db, 'forms', targetFormId))
   await setDoc(doc(db, 'forms', targetFormId), {
-    ownerUid: owner.uid, ownerEmail: owner.email, program, questions, formType, theme, settings,
+    formId: targetFormId,
+    creatorUid: owner.uid,
+    ownerUid: owner.uid,
+    ownerEmail: owner.email,
+    program,
+    questions,
+    formType,
+    theme,
+    settings,
+    status: settings.schedule.status,
+    responseCount: targetSnapshot.exists() ? Number(targetSnapshot.data().responseCount ?? 0) : 0,
     published: settings.schedule.status !== 'private',
     surveyEndAt: Timestamp.fromDate(new Date(`${surveyEndDate}T23:59:59+09:00`)),
     expireAt: expirationFromSurveyEnd(surveyEndDate), updatedAt: serverTimestamp(),

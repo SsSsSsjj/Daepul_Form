@@ -216,3 +216,221 @@ export interface ResponseTopic {
   sourceIds: number[]
   reportSentence: string
 }
+
+// Stable domain contract consumed by the server-side form API and parallel UI work.
+export type EntityId = string
+export type FormStatus = FormLifecycleStatus
+export type AccessMode = 'anyone' | 'authenticated' | 'university' | 'restricted'
+export type DuplicatePolicy = 'allow' | 'account_once' | 'browser_once'
+export type DomainQuestionType =
+  | QuestionType
+  | 'single_choice'
+  | 'multiple_choice'
+  | 'dropdown'
+  | 'email'
+  | 'phone'
+  | 'student_id'
+  | 'address'
+  | 'date'
+  | 'time'
+  | 'datetime'
+  | 'duration'
+  | 'file_upload'
+  | 'image_upload'
+  | 'linear_scale'
+  | 'like'
+  | 'single_grid'
+  | 'multiple_grid'
+  | 'privacy_consent'
+  | 'privacy_notice'
+export type ContentType = DomainQuestionType | 'heading' | 'description' | 'divider' | 'image' | 'video'
+export type AnswerValue = string | number | boolean | string[] | Record<string, string | string[]> | null
+
+export interface Option {
+  id: EntityId
+  label: string
+  imageUrl?: string
+  isOther?: boolean
+}
+
+export interface QuestionValidation {
+  minSelections?: number
+  maxSelections?: number
+  exactSelections?: number
+  min?: number
+  max?: number
+  integerOnly?: boolean
+  minLength?: number
+  maxLength?: number
+  format?: 'email' | 'phone' | 'student_id'
+  studentIdLength?: number
+  pattern?: string
+  emailDomain?: string
+  minDate?: string
+  maxDate?: string
+  allRowsRequired?: boolean
+  uniqueColumns?: boolean
+  fileTypes?: string[]
+  maxFiles?: number
+  maxFileSizeMb?: number
+  errorMessage?: string
+}
+
+export interface Question {
+  id: EntityId
+  sectionId: EntityId
+  type: ContentType
+  title: string
+  description?: string
+  required: boolean
+  options?: Option[]
+  rows?: Option[]
+  columns?: Option[]
+  validation?: QuestionValidation
+  shuffleOptions?: boolean
+  imageUrl?: string
+  videoUrl?: string
+}
+
+export interface Section {
+  id: EntityId
+  title: string
+  description?: string
+  questionIds: EntityId[]
+  nextSectionId?: EntityId | 'submit'
+}
+
+export interface BranchRule {
+  id: EntityId
+  questionId: EntityId
+  operator: 'equals' | 'not_equals' | 'includes' | 'not_includes'
+  optionId?: EntityId
+  value?: AnswerValue
+  destination: { type: 'section'; sectionId: EntityId } | { type: 'submit' } | { type: 'block' }
+}
+
+export interface FormAccess {
+  mode: AccessMode
+  allowAnonymous: boolean
+  collectVerifiedEmail: boolean
+  allowedEmailDomains: string[]
+  allowedUids: string[]
+  allowedGroups: string[]
+  duplicatePolicy: DuplicatePolicy
+  universityDomain?: string
+}
+
+export interface FormSchedule {
+  startAt: string | null
+  endAt: string | null
+  maxResponses: number | null
+  closedMessage: string
+  showBeforeOpen: boolean
+  resultsPublic: boolean
+}
+
+export interface Theme {
+  id: string
+  accent?: string
+  coverImageUrl?: string
+  icon?: string
+}
+
+export interface FormVersion {
+  version: number
+  createdAt: string
+  createdBy: string
+  summary: string
+}
+
+export interface Form {
+  formId: EntityId
+  creatorUid: string
+  title: string
+  description: string
+  formType: FormType
+  status: FormStatus
+  sections: Section[]
+  questions: Question[]
+  branchRules: BranchRule[]
+  access: FormAccess
+  schedule: FormSchedule
+  theme: Theme
+  slug: string | null
+  randomId: string
+  responseCount: number
+  version: number
+  versionHistory?: FormVersion[]
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface Answer {
+  questionId: EntityId
+  value: AnswerValue
+  fileIds?: EntityId[]
+}
+
+export interface Respondent {
+  respondentUid?: string
+  anonymousId?: string
+  respondentEmail?: string
+  isAnonymous: boolean
+}
+
+export interface FormResponse {
+  responseId: EntityId
+  formId: EntityId
+  submittedAt: string
+  respondentUid?: string
+  anonymousId?: string
+  respondentEmail?: string
+  answers: Answer[]
+  status: ResponseStatus
+  formVersion: number
+}
+
+export interface FormDraft {
+  draftId: EntityId
+  formId: EntityId
+  creatorUid: string
+  form: Form
+  source: 'blank' | 'template' | 'ai'
+  aiChanges?: string[]
+  reviewWarnings: string[]
+  saveState: 'saving' | 'saved' | 'failed'
+  lastSavedAt?: string
+}
+
+export interface FormAccessDecision {
+  allowed: boolean
+  canSubmit: boolean
+  reason:
+    | 'ok'
+    | 'not_found'
+    | 'private'
+    | 'not_started'
+    | 'paused'
+    | 'closed'
+    | 'max_responses'
+    | 'login_required'
+    | 'university_account_required'
+    | 'account_not_allowed'
+    | 'duplicate'
+  status: FormStatus
+  responseCount: number
+  remainingResponses: number | null
+  remainingMs: number | null
+}
+
+export interface UploadMetadata {
+  uploadId: EntityId
+  formId: EntityId
+  questionId: EntityId
+  ownerUid: string
+  storagePath: string
+  fileName: string
+  contentType: string
+  size: number
+  status: 'pending' | 'uploaded' | 'attached'
+}
