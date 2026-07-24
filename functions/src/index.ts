@@ -22,6 +22,7 @@ import {
 import { buildAuthorizationUrl, exchangeCodeForProfile, type ProviderCredentials } from './auth/providers'
 import { FirestoreOAuthSessionRepository, OAuthSessionService } from './auth/sessions'
 import { createFormCallables, scoreQuizAnswers } from './forms'
+import { questionsOnResponseRoute } from './responseRouting'
 
 type Response = Parameters<Parameters<typeof onRequest>[0]>[1]
 
@@ -234,8 +235,14 @@ function validateAnswersAgainstQuestions(questions: unknown, answers: Record<str
   if (!Array.isArray(questions) || Object.keys(answers).length > 300) {
     throw new HttpsError('invalid-argument', '답변 구조가 올바르지 않습니다.')
   }
-  for (const item of questions) {
-    const question = item && typeof item === 'object' ? item as Record<string, unknown> : {}
+  const activeQuestions = questionsOnResponseRoute(questions, answers)
+  const activeIds = new Set(activeQuestions.map((question) => String(question.id ?? '')))
+  if (Object.entries(answers).some(([id, value]) => !activeIds.has(id)
+    && value !== undefined && value !== null && value !== '' && value !== false
+    && (!Array.isArray(value) || value.length > 0))) {
+    throw new HttpsError('invalid-argument', '현재 응답 경로에 포함되지 않은 질문의 답변이 있습니다.')
+  }
+  for (const question of activeQuestions) {
     const id = String(question.id ?? '')
     const value = answers[id]
     const empty = value === undefined || value === null || value === '' || value === false
