@@ -230,6 +230,48 @@ export function validateSubmittedAnswers(form: DocumentData, answers: unknown[])
   return { valid: true as const }
 }
 
+function comparableQuizValues(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : [value]
+  return values
+    .filter((item) => ['string', 'number', 'boolean'].includes(typeof item))
+    .map((item) => String(item).trim().toLocaleLowerCase('ko'))
+    .sort((left, right) => left.localeCompare(right, 'ko', { numeric: true }))
+}
+
+export function scoreQuizAnswers(config: Record<string, unknown>, answers: Record<string, unknown>) {
+  if (config.enabled !== true) return null
+  const questionConfigs = config.questions && typeof config.questions === 'object'
+    ? config.questions as Record<string, Record<string, unknown>>
+    : {}
+  const released = config.releaseScore !== 'later'
+  const showCorrectAnswers = config.showCorrectAnswers === true
+  const questions = Object.entries(questionConfigs).map(([questionId, question]) => {
+    const possiblePoints = Math.max(0, Number(question.points ?? 0))
+    const expected = comparableQuizValues(question.correctAnswers)
+    const received = comparableQuizValues(answers[questionId])
+    const correct = expected.length > 0
+      && expected.length === received.length
+      && expected.every((value, index) => value === received[index])
+    return {
+      questionId: Number(questionId),
+      earnedPoints: correct ? possiblePoints : 0,
+      possiblePoints,
+      correct,
+      ...(showCorrectAnswers && released ? { correctAnswers: Array.isArray(question.correctAnswers) ? question.correctAnswers : [] } : {}),
+      feedback: stringValue(correct ? question.correctFeedback : question.incorrectFeedback),
+    }
+  }).filter(({ possiblePoints }) => possiblePoints > 0)
+  const score = questions.reduce((total, question) => total + question.earnedPoints, 0)
+  const maxScore = questions.reduce((total, question) => total + question.possiblePoints, 0)
+  return {
+    score,
+    maxScore,
+    percentage: maxScore > 0 ? Math.round(score / maxScore * 1000) / 10 : 0,
+    released,
+    questions,
+  }
+}
+
 export function createFormCallables(db: FirebaseFirestore.Firestore) {
   const getPublicForm = onCall({ region, enforceAppCheck: true }, async (request) => {
     const data = typeof request.data === 'object' && request.data ? request.data as Record<string, unknown> : {}

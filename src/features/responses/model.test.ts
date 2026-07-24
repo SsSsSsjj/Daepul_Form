@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { defaultFormSettings, type FormQuestion, type StoredFormResponse } from '../../types'
 import {
   createSampleResponses,
+  extractKeywordInsights,
   getFormAvailability,
   queryResponses,
   responsesToCsv,
@@ -87,5 +88,17 @@ describe('public response model', () => {
       pageSize: 25,
     })
     expect(missing.items.map((item) => item.id)).toEqual(['b'])
+  })
+
+  it('finds repeated keywords across free-text responses and excludes one-off words', () => {
+    const textQuestions: FormQuestion[] = [{ id: 1, label: '의견', type: 'long_text', required: false }]
+    const responses: StoredFormResponse[] = [
+      { id: 'a', answers: { 1: '멘토링 일정과 멘토링 안내가 좋았습니다' } },
+      { id: 'b', answers: { 1: '멘토링 시간을 조금 늘려주세요' } },
+      { id: 'c', answers: { 1: '시설이 깨끗합니다' } },
+    ]
+    expect(extractKeywordInsights(responses, textQuestions)).toEqual([
+      { keyword: '멘토링', count: 3, responseCount: 2 },
+    ])
   })
 })
