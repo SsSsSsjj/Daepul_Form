@@ -237,8 +237,8 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
     const existingForm = await getDoc(doc(db, 'forms', formId))
     if (existingForm.exists()) {
       responseCount = Number(existingForm.data().responseCount ?? 0)
-      const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options }) => ({
-        id, label, type, required, options: options ?? [],
+      const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options, inputFormat }) => ({
+        id, label, type, required, options: options ?? [], inputFormat: inputFormat ?? 'none',
       }))
       const previousQuestions = (existingForm.data().questions ?? []) as FormQuestion[]
       const questionsChanged = JSON.stringify(normalizeQuestions(previousQuestions)) !== JSON.stringify(normalizeQuestions(questions))
@@ -659,7 +659,8 @@ const formSchema = Schema.object({ properties: {
   questions: Schema.array({ items: Schema.object({ properties: {
     label: Schema.string(), type: Schema.enumString({ enum: ['short_text', 'long_text', 'select', 'checkbox', 'consent', 'rating', 'number', 'file'] }),
     required: Schema.boolean(), options: Schema.array({ items: Schema.string() }),
-  }, optionalProperties: ['options'] }) }),
+    inputFormat: Schema.enumString({ enum: ['none', 'email', 'phone'] }),
+  }, optionalProperties: ['options', 'inputFormat'] }) }),
   reviewNotes: Schema.array({ items: Schema.string() }),
   suggestedTheme: Schema.enumString({ enum: ['green', 'spring', 'summer', 'autumn', 'winter', 'kangnam'] }),
   suggestedEndDate: Schema.string(),
@@ -712,6 +713,8 @@ export async function generateFormFromDocuments(files: File[], memo: string): Pr
   }))
   const prompt = `첨부 자료를 읽고 실제 내용에 맞는 한국어 폼과 배포 설정을 함께 설계하세요.
 만족도 조사라면 1~5점 rating과 자유의견을 포함하고, 신청서라면 신청 자격·일정·선발에 필요한 질문을 만드세요.
+객관식(select)과 체크박스(checkbox) 질문에는 실제 문서 내용을 바탕으로 options를 반드시 2개 이상 작성하세요. checkbox는 여러 항목을 동시에 선택하는 질문에만 사용하세요.
+이메일 또는 휴대전화 번호를 직접 입력받는 단답형 질문은 inputFormat을 각각 email 또는 phone으로 지정하고, 그 외 질문은 none으로 지정하세요.
 suggestedSettings에는 문서에 근거해 참여 정책, 응답자 정보, 접수 일정, 최대 응답 수, 제출 후 동작, 공유 제목·설명을 추천하세요.
 publicSlug는 폼 제목을 설명하는 짧은 영문 소문자·숫자·하이픈 주소로 만드세요. 날짜는 문서에 있으면 startsAt/closesAt에 ISO 형식으로, suggestedEndDate에는 YYYY-MM-DD로 적으세요.
 강남대학교 공식 행사·사업이면 suggestedTheme은 kangnam, 계절성이 명확하면 해당 계절, 아니면 green을 사용하세요.
@@ -719,7 +722,19 @@ publicSlug는 폼 제목을 설명하는 짧은 영문 소문자·숫자·하이
 개인정보 질문은 꼭 필요한 최소한만 만드세요. 메모: ${memo || '없음'}`
   const result = await model.generateContent([...parts, { text: prompt }])
   const parsed = JSON.parse(result.response.text()) as Omit<GeneratedForm, 'questions'> & { questions: Array<Omit<FormQuestion, 'id'>> }
-  return { ...parsed, questions: parsed.questions.map((question, index) => ({ ...question, id: Date.now() + index })) }
+  return {
+    ...parsed,
+    questions: parsed.questions.map((question, index) => {
+      const selectable = question.type === 'select' || question.type === 'checkbox'
+      const options = question.options?.map((option) => option.trim()).filter(Boolean) ?? []
+      return {
+        ...question,
+        id: Date.now() + index,
+        inputFormat: question.type === 'short_text' && ['email', 'phone'].includes(question.inputFormat ?? '') ? question.inputFormat : 'none',
+        options: selectable ? (options.length >= 2 ? options : ['선택지 1', '선택지 2']) : undefined,
+      }
+    }),
+  }
 }
 
 export async function summarizeResponses(responses: string[]): Promise<ResponseTopic[]> {

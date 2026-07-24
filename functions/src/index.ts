@@ -247,6 +247,12 @@ function validateAnswersAgainstQuestions(questions: unknown, answers: Record<str
       throw new HttpsError('invalid-argument', '지원하지 않는 답변 형식입니다.')
     }
     if (typeof value === 'string' && value.length > 20_000) throw new HttpsError('invalid-argument', '답변이 너무 깁니다.')
+    if (question.inputFormat === 'email' && (typeof value !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))) {
+      throw new HttpsError('invalid-argument', '이메일 형식이 올바르지 않습니다.')
+    }
+    if (question.inputFormat === 'phone' && (typeof value !== 'string' || !/^010-\d{4}-\d{4}$/.test(value))) {
+      throw new HttpsError('invalid-argument', '전화번호는 010-0000-0000 형식으로 입력해 주세요.')
+    }
     if (question.type === 'number') {
       const numeric = Number(value)
       if (!Number.isFinite(numeric)) throw new HttpsError('invalid-argument', '숫자 답변을 확인해 주세요.')

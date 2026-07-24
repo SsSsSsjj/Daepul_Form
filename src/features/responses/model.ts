@@ -131,6 +131,12 @@ export function validateAnswer(question: FormQuestion, value: unknown) {
   if (question.required && empty) return '필수 질문입니다.'
   if (empty) return ''
   const text = String(value)
+  if (question.inputFormat === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) {
+    return '이메일 형식에 맞게 입력해 주세요. 예: name@example.com'
+  }
+  if (question.inputFormat === 'phone' && !/^010-\d{4}-\d{4}$/.test(text)) {
+    return '전화번호 형식에 맞게 입력해 주세요. 예: 010-0000-0000'
+  }
   if (question.min !== undefined && question.type === 'number' && Number(value) < question.min) {
     return `${question.min} 이상이어야 합니다.`
   }
@@ -258,7 +264,11 @@ export function createSampleResponses(questions: FormQuestion[], count = 10): St
     answers: Object.fromEntries(questions.map((question) => {
       if (question.type === 'rating') return [String(question.id), (index % 5) + 1]
       if (question.type === 'number') return [String(question.id), index + 1]
-      if (question.type === 'consent' || question.type === 'checkbox') return [String(question.id), true]
+      if (question.type === 'consent') return [String(question.id), true]
+      if (question.type === 'checkbox') {
+        const options = question.options?.length ? question.options : ['선택지 1', '선택지 2']
+        return [String(question.id), options.filter((_, optionIndex) => (optionIndex + index) % 2 === 0)]
+      }
       if (question.type === 'select') return [String(question.id), question.options?.[index % Math.max(question.options.length, 1)] ?? '선택 1']
       return [String(question.id), question.type === 'long_text' ? `예시 장문 응답 ${index + 1}` : `예시 답변 ${index + 1}`]
     })),
