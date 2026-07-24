@@ -139,6 +139,8 @@ export interface FormQuestion {
   type: QuestionType
   required: boolean
   options?: string[]
+  imageUrl?: string
+  optionImageUrls?: string[]
   maxSelections?: number
   sectionId?: string
   description?: string
