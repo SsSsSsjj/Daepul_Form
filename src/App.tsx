@@ -19,7 +19,7 @@ import { createSampleResponses, getFormAvailability, normalizeFormSettings, sett
 import { reorderQuestions } from './features/forms/reorderQuestions'
 import { answersForResponseRoute, branchTargetForSection, getQuestionSections, nextSectionId, resolveResponseRoute, routingWarnings, type QuestionSection } from './features/forms/conditionalRouting'
 
-type Page = 'create' | 'edit' | 'publish' | 'results' | 'manage'
+type Page = 'create' | 'sample' | 'edit' | 'publish' | 'results' | 'manage'
 type CreationMode = 'ai' | 'manual'
 type Theme = 'green' | 'spring' | 'summer' | 'autumn' | 'winter' | 'kangnam' | 'blue' | 'coral'
 type SelectableTheme = Exclude<Theme, 'blue' | 'coral'>
@@ -30,12 +30,13 @@ type SubmissionStatus = 'checking' | 'ready' | 'submitted-now' | 'already-submit
 type PublicAnswerValue = string | boolean | number | string[]
 
 const emptyProgram: ProgramInfo = { programName: '', description: '', target: '', period: '', schedule: '', capacity: '', requirements: '', privacyConsent: '' }
-const serviceSampleProgram: ProgramInfo = { programName: '2026 강남대학교 진로 프로그램 만족도 조사', description: '참여 경험을 바탕으로 다음 프로그램을 더 알차게 만들기 위한 예시 폼입니다.', target: '강남대학교 재학생', period: '2026. 7. 1. ~ 7. 31.', schedule: '', capacity: '', requirements: '', privacyConsent: '' }
+const serviceSampleProgram: ProgramInfo = { programName: '2026 강남대학교 진로·복학 지원 설문', description: '학적 상태에 따라 프로그램 경험 또는 복학 지원 수요를 묻는 조건부 섹션 예시 폼입니다.', target: '강남대학교 재학생·휴학생', period: '2026. 7. 1. ~ 7. 31.', schedule: '', capacity: '', requirements: '', privacyConsent: '' }
 const serviceSampleQuestions: FormQuestion[] = [
-  { id: 9001, label: '프로그램을 어떻게 알게 되었나요?', type: 'select', required: true, options: ['교내 공지', '친구 추천', '교수·직원 안내', 'SNS'] },
-  { id: 9002, label: '프로그램 전반에 얼마나 만족하셨나요?', type: 'rating', required: true },
-  { id: 9003, label: '가장 도움이 된 내용을 선택해 주세요.', type: 'checkbox', required: false, options: ['진로 탐색', '취업 준비', '현직자 멘토링', '실습 활동'] },
-  { id: 9004, label: '다음 프로그램을 위한 의견을 남겨 주세요.', type: 'long_text', required: false },
+  { id: 9001, label: '현재 학적 상태를 선택해 주세요.', type: 'select', required: true, options: ['재학생', '휴학생'], sectionId: 'sample-status', sectionTitle: '응답자 구분', branch: { 재학생: 'sample-student', 휴학생: 'sample-leave' } },
+  { id: 9002, label: '프로그램 전반에 얼마나 만족하셨나요?', type: 'rating', required: true, sectionId: 'sample-student', sectionTitle: '재학생 프로그램 경험', sectionNext: 'submit' },
+  { id: 9003, label: '가장 도움이 된 내용을 선택해 주세요.', type: 'checkbox', required: false, options: ['진로 탐색', '취업 준비', '현직자 멘토링', '실습 활동'], maxSelections: 2, sectionId: 'sample-student', sectionTitle: '재학생 프로그램 경험', sectionNext: 'submit' },
+  { id: 9004, label: '휴학 중 가장 필요한 학교 지원을 선택해 주세요.', type: 'select', required: true, options: ['복학 상담', '진로 상담', '취업 정보', '학사 일정 안내'], sectionId: 'sample-leave', sectionTitle: '휴학생 지원 수요', sectionNext: 'submit' },
+  { id: 9005, label: '복학 준비를 위해 필요한 지원을 자유롭게 적어 주세요.', type: 'long_text', required: false, sectionId: 'sample-leave', sectionTitle: '휴학생 지원 수요', sectionNext: 'submit' },
 ]
 const typeLabels = { short_text: '단답형', long_text: '장문형', select: '객관식', checkbox: '체크박스', consent: '개인정보 동의', rating: '1~5점 평점', number: '숫자', file: '파일 업로드' }
 const legacyQuestionPlaceholders = new Set(['질문을 입력해 주세요', '새 질문'])
@@ -479,7 +480,11 @@ export default function App() {
   const openServiceSample = () => {
     setProgram(serviceSampleProgram); setQuestions(serviceSampleQuestions); setTheme('kangnam')
     setFormSettings(normalizeFormSettings({...defaultFormSettings,branding:{...defaultFormSettings.branding,accentColor:'#087fc5',backgroundColor:'#f3f8fd'}}))
-    setResponses(createSampleResponses(serviceSampleQuestions,36)); setResponsePage(undefined); setSampleResults(true); setMessage(''); setPage('results')
+    setResponsePage(undefined); setSampleResults(false); setMessage(''); setPage('sample')
+  }
+  const openServiceSampleResults = () => {
+    setResponses(createSampleResponses(serviceSampleQuestions,36))
+    setResponsePage(undefined); setSampleResults(true); setMessage(''); setPage('results')
   }
   const moveQuestion = (index:number,direction:-1|1) => {
     const target=index+direction
@@ -646,7 +651,8 @@ export default function App() {
     <div className="university-promotion-bar" aria-hidden="true"><img src={kangnamPromotionBar} alt=""/></div>
     <UniversityPatternBand/>
     <main id="main-content">
-      {page === 'create' && <section><Title step="1" title="자료를 읽고 폼을 만듭니다" text="PDF·PNG·JPG·HWP 참고문서와 담당자 메모를 Gemini가 함께 분석합니다."/><div className="grid two"><div className="card"><h2>참고문서</h2><div className={`drop ${dragging ? 'dragging' : ''}`} onClick={() => fileRef.current?.click()} onDragOver={(e) => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}><Upload/><b>파일을 선택하거나 끌어 놓으세요</b><span>PDF, PNG, JPG, HWP, HWPX · 최대 5개</span><input ref={fileRef} hidden type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.hwp,.hwpx" onChange={onFiles}/></div>{files.map((file, i) => <div className="file" key={`${file.name}-${i}`}><FileText size={16}/><span>{file.name}</span><button onClick={() => setFiles(files.filter((_, index) => index !== i))}><Trash2 size={15}/></button></div>)}</div><div className="card"><h2>담당자 메모</h2><textarea value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 이 자료는 행사 만족도 조사입니다. 익명으로 받고 개선 의견을 자세히 물어봐 주세요."/><small>문서와 메모가 함께 AI 분석에 반영됩니다.</small></div></div>{analysisError && <Notice text={analysisError}/>}<div className="actions create-actions"><button type="button" className="manual-create" onClick={startManualForm}><Plus/> 직접 폼 만들기</button><button type="button" className="sample-view" onClick={openServiceSample}><Eye/> 샘플 보기</button><button className="primary" onClick={() => void analyze()} disabled={analysisLoading}>{analysisLoading ? <LoaderCircle className="spin"/> : <WandSparkles/>}{analysisLoading ? '문서를 읽는 중...' : 'AI로 폼 만들기'}</button></div></section>}
+      {page === 'create' && <section><Title step="1" title="자료를 읽고 폼을 만듭니다" text="PDF·PNG·JPG·HWP 참고문서와 담당자 메모를 Gemini가 함께 분석합니다."/><div className="grid two"><div className="card"><h2>참고문서</h2><div className={`drop ${dragging ? 'dragging' : ''}`} onClick={() => fileRef.current?.click()} onDragOver={(e) => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}><Upload/><b>파일을 선택하거나 끌어 놓으세요</b><span>PDF, PNG, JPG, HWP, HWPX · 최대 5개</span><input ref={fileRef} hidden type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.hwp,.hwpx" onChange={onFiles}/></div>{files.map((file, i) => <div className="file" key={`${file.name}-${i}`}><FileText size={16}/><span>{file.name}</span><button onClick={() => setFiles(files.filter((_, index) => index !== i))}><Trash2 size={15}/></button></div>)}</div><div className="card"><h2>담당자 메모</h2><textarea aria-label="AI 폼 생성을 위한 담당자 메모" aria-describedby="memo-help" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder={'예:\n이 자료는 행사 만족도 조사입니다. 익명으로 받고 개선 의견을 자세히 물어봐 주세요.\n학적 상태에서 재학생을 선택하면 만족도 섹션으로, 휴학생을 선택하면 복학 지원 섹션으로 이동해 주세요.'}/><small id="memo-help">조건부 섹션이 필요하면 기준 질문, 선택지, 이동할 섹션을 구체적으로 적어 주세요. 문서와 메모가 함께 AI 분석에 반영됩니다.</small></div></div>{analysisError && <Notice text={analysisError}/>}<div className="actions create-actions"><button type="button" className="manual-create" onClick={startManualForm}><Plus/> 직접 폼 만들기</button><button type="button" className="sample-view" onClick={openServiceSample}><Eye/> 샘플 보기</button><button className="primary" onClick={() => void analyze()} disabled={analysisLoading}>{analysisLoading ? <LoaderCircle className="spin"/> : <WandSparkles/>}{analysisLoading ? '문서를 읽는 중...' : 'AI로 폼 만들기'}</button></div></section>}
+      {page === 'sample' && <section><Title step="" title="조건부 섹션 샘플" text="학적 상태를 선택하고 다음 버튼을 누르면 응답에 맞는 섹션으로 이동합니다."/><div className="sample-showcase"><div className="card sample-guide"><span className="badge">INTERACTIVE SAMPLE</span><h2>분기 흐름을 직접 확인하세요</h2><p><b>재학생</b>을 선택하면 프로그램 만족도 질문으로, <b>휴학생</b>을 선택하면 복학 지원 질문으로 이동합니다.</p><p>실제 폼에서는 담당자 메모에 같은 방식으로 조건을 적으면 AI가 섹션과 이동 규칙을 함께 구성합니다.</p><button type="button" onClick={openServiceSampleResults}><BarChart3/> 샘플 결과 보기</button></div><FormBody program={serviceSampleProgram} questions={serviceSampleQuestions} theme="kangnam" branding={formSettings.branding}/></div><div className="actions between"><button type="button" onClick={()=>setPage('create')}><ChevronLeft/> 돌아가기</button><button type="button" className="primary" onClick={openServiceSampleResults}><BarChart3/> 분기 응답 결과 보기</button></div></section>}
 {/*
       {page === 'edit' && <section><Title step="2" title={creationMode === 'manual' ? '폼 내용을 직접 입력하세요' : 'AI가 만든 폼을 확인하세요'} text={creationMode === 'manual' ? '기본 정보와 질문을 입력한 뒤 디자인·배포 설정으로 이동합니다.' : '문서에서 확실하지 않은 내용은 검토 항목으로 표시합니다.'}/>{reviewNotes.length > 0 && <div className="notice warn"><b>사람이 확인할 항목</b>{reviewNotes.map((note) => <span key={note}>• {note}</span>)}</div>}<div className="grid edit"><div><div className="card form-fields"><h2>폼 기본 정보</h2><label>폼 제목<input value={program.programName} onChange={(e) => setProgram({...program, programName:e.target.value})}/></label><label>설명<textarea value={program.description} onChange={(e) => setProgram({...program, description:e.target.value})}/></label><div className="grid two"><label>대상<input value={program.target} onChange={(e) => setProgram({...program, target:e.target.value})}/></label><label>기간<input value={program.period} onChange={(e) => setProgram({...program, period:e.target.value})}/></label></div></div><div className="card"><div className="row"><h2>질문 {questions.length}개</h2><button onClick={() => setQuestions([...questions,{id:Date.now(),label:'',type:'short_text',required:false}])}><Plus size={16}/> 질문 추가</button></div>{questions.map((q,index)=><QuestionEditor key={q.id} question={q} index={index} count={questions.length} formId={formId} user={user} onChange={(change)=>setQuestions(questions.map(item=>item.id===q.id?{...item,...change}:item))} onMove={(direction)=>moveQuestion(index,direction)} onDuplicate={()=>duplicateQuestion(index)} onDelete={()=>setQuestions(questions.filter(item=>item.id!==q.id))}/>)}{formSettings.quiz.enabled&&<QuizConfiguration questions={questions} onChange={setQuestions}/>}</div></div><aside className="card preview"><h2>미리보기</h2><FormBody program={program} questions={questions} theme={theme} branding={formSettings.branding}/></aside></div><div className="actions between"><button onClick={() => setPage('create')}>자료 다시 선택</button><button className="primary" onClick={() => setPage('publish')}>디자인·배포 설정</button></div></section>}
 */}
@@ -995,9 +1001,52 @@ function FormCover({program,theme,headingLevel='preview',branding}:{program:Prog
   return <div className="form-cover" style={branding?.headerImageUrl?{backgroundImage:`linear-gradient(90deg,#0d2b26dd,#0d2b2677),url("${branding.headerImageUrl.replace(/["\\]/g,'')}")`}:undefined}><ThemeDecoration theme={theme}/><div className="form-cover-content">{icon&&<div className="form-cover-icon" aria-hidden="true">{icon}</div>}<span>{eyebrow}</span>{headingLevel==='public'?<h1>{program.programName||'폼 제목'}</h1>:<h2>{program.programName||'폼 제목'}</h2>}<p>{program.description||'폼 설명이 표시됩니다.'}</p></div></div>
 }
 
-function FormBody({program,questions,theme,branding}:{program:ProgramInfo;questions:FormQuestion[];theme:Theme;branding?:FormSettings['branding']}) {
+export function FormBody({program,questions,theme,branding}:{program:ProgramInfo;questions:FormQuestion[];theme:Theme;branding?:FormSettings['branding']}) {
   const previewStyle = theme==='green'?{backgroundColor:branding?.backgroundColor,'--accent':branding?.accentColor} as CSSProperties:undefined
-  return <div className={`form-body theme-${theme}`} style={previewStyle}><FormCover program={program} theme={theme} branding={branding}/>{questions.map((q,i)=>{const options=q.options?.length?q.options:['선택지 1','선택지 2'];return <label className="form-question" key={q.id}><span>{i+1}. {q.label} {q.required&&<em>*</em>}</span>{q.imageUrl&&<img className="question-response-image" src={q.imageUrl} alt={`${q.label} 질문 이미지`}/>} {q.type==='select'&&q.optionImageUrls?.some(Boolean)&&<div className="option-image-gallery">{options.map((option,index)=>q.optionImageUrls?.[index]?<span key={`${option}-${index}`}><img src={q.optionImageUrls[index]} alt=""/><small>{option}</small></span>:null)}</div>}{q.type==='long_text'?<textarea disabled/>:q.type==='select'?<select disabled><option>선택해 주세요</option>{options.map((o,index)=><option key={`${o}-${index}`}>{o}</option>)}</select>:q.type==='rating'?<div className="rating">{[1,2,3,4,5].map(n=><i key={n}>{n}</i>)}</div>:q.type==='checkbox'?<div className="checkbox-options preview-options">{options.map((option,index)=><span className="check-line option-with-image" key={`${option}-${index}`}>□ <span>{option}</span>{q.optionImageUrls?.[index]&&<img src={q.optionImageUrls[index]} alt=""/>}</span>)}</div>:q.type==='consent'?<div className="check-line">□ 동의합니다</div>:q.type==='file'?<div className="file-upload-preview"><Upload/> 파일 선택</div>:<input disabled type={q.inputFormat==='email'?'email':q.inputFormat==='phone'?'tel':q.type==='number'?'number':'text'} placeholder={q.inputFormat==='email'?'name@example.com':q.inputFormat==='phone'?'010-0000-0000':undefined}/>}</label>})}</div>
+  const sections=useMemo(()=>getQuestionSections(questions),[questions])
+  const structureKey=sections.map(section=>`${section.id}:${section.questions.map(question=>`${question.id}:${question.sectionNext??''}:${JSON.stringify(question.branch??{})}`).join(',')}`).join('|')
+  const [pageIndex,setPageIndex]=useState(0)
+  const [pageHistory,setPageHistory]=useState<number[]>([])
+  const [answers,setAnswers]=useState<Record<number,PublicAnswerValue>>({})
+  useEffect(()=>{setPageIndex(0);setPageHistory([]);setAnswers({})},[structureKey])
+  const visibleSection=sections[pageIndex]
+  const visibleQuestions=visibleSection?.questions??questions
+  const routeTarget=visibleSection?branchTargetForSection(visibleSection,Object.fromEntries(Object.entries(answers))):undefined
+  const previewRoute=resolveResponseRoute(questions,Object.fromEntries(Object.entries(answers)))
+  const previewStep=Math.max(0,previewRoute.sectionIds.indexOf(visibleSection?.id??''))+1
+  const previewStepCount=Math.max(1,previewRoute.sectionIds.length)
+  const atEnd=routeTarget==='submit'||pageIndex>=sections.length-1
+  const updatePreviewAnswer=(question:FormQuestion,value:PublicAnswerValue)=>{
+    setAnswers(answersForResponseRoute(questions,{...answers,[question.id]:value}) as Record<number,PublicAnswerValue>)
+  }
+  const goToNextPreviewSection=()=>{
+    if(!visibleSection||atEnd)return
+    const targetIndex=routeTarget?sections.findIndex(section=>section.id===routeTarget):pageIndex+1
+    if(targetIndex<0||targetIndex>=sections.length)return
+    setPageHistory(current=>[...current,pageIndex])
+    setPageIndex(targetIndex)
+  }
+  const restartPreview=()=>{setAnswers({});setPageHistory([]);setPageIndex(0)}
+  return <div className={`form-body theme-${theme}`} style={previewStyle}>
+    <FormCover program={program} theme={theme} branding={branding}/>
+    <div className="form-progress" aria-label={`미리보기 ${previewStep}/${previewStepCount} 페이지`}><div><b style={{width:`${previewStep/previewStepCount*100}%`}}/></div><span>{previewStep} / {previewStepCount} 페이지</span></div>
+    {sections.length>1&&visibleSection&&<div className="public-section-heading"><span>SECTION {previewStep}</span><h3>{visibleSection.title}</h3></div>}
+    {visibleQuestions.map((q)=>{
+      const questionIndex=questions.findIndex(item=>item.id===q.id)
+      const options=q.options?.length?q.options:['선택지 1','선택지 2']
+      const inputId=`preview-question-${q.id}`
+      return <div className="form-question" key={q.id}><span id={`${inputId}-label`}>{questionIndex+1}. {q.label} {q.required&&<em>*</em>}</span>{q.description&&<small>{q.description}</small>}{q.imageUrl&&<img className="question-response-image" src={q.imageUrl} alt={`${q.label} 질문 이미지`}/>} {q.type==='select'&&q.optionImageUrls?.some(Boolean)&&<div className="option-image-gallery">{options.map((option,index)=>q.optionImageUrls?.[index]?<span key={`${option}-${index}`}><img src={q.optionImageUrls[index]} alt=""/><small>{option}</small></span>:null)}</div>}
+        {q.type==='long_text'?<textarea id={inputId} aria-labelledby={`${inputId}-label`} value={String(answers[q.id]??'')} onChange={event=>updatePreviewAnswer(q,event.target.value)}/>
+        :q.type==='select'?<select id={inputId} aria-labelledby={`${inputId}-label`} value={String(answers[q.id]??'')} onChange={event=>updatePreviewAnswer(q,event.target.value)}><option value="">선택해 주세요</option>{options.map((option,index)=><option key={`${option}-${index}`}>{option}</option>)}</select>
+        :q.type==='rating'?<div id={inputId} className="rating" role="radiogroup" aria-labelledby={`${inputId}-label`}>{[1,2,3,4,5].map(value=><button type="button" role="radio" aria-checked={answers[q.id]===value} className={answers[q.id]===value?'active':''} onClick={()=>updatePreviewAnswer(q,value)} key={value}>{value}</button>)}</div>
+        :q.type==='checkbox'?<fieldset id={inputId} className="checkbox-options preview-options" aria-labelledby={`${inputId}-label`}>{q.maxSelections&&<small className="selection-limit">최대 {q.maxSelections}개까지 선택할 수 있습니다.</small>}{options.map((option,index)=>{const selected=Array.isArray(answers[q.id])?answers[q.id] as string[]:[];const limitReached=Boolean(q.maxSelections&&selected.length>=q.maxSelections&&!selected.includes(option));return <label className="check-line option-with-image" key={`${option}-${index}`}><input type="checkbox" checked={selected.includes(option)} disabled={limitReached} onChange={event=>updatePreviewAnswer(q,event.target.checked?[...selected,option]:selected.filter(item=>item!==option))}/><span>{option}</span>{q.optionImageUrls?.[index]&&<img src={q.optionImageUrls[index]} alt=""/>}</label>})}</fieldset>
+        :q.type==='consent'?<label className="check-line" htmlFor={inputId}><input id={inputId} type="checkbox" checked={Boolean(answers[q.id])} onChange={event=>updatePreviewAnswer(q,event.target.checked)}/><span>동의합니다.</span></label>
+        :q.type==='file'?<button type="button" className="file-upload-preview" disabled><Upload/> 미리보기에서는 파일을 선택할 수 없습니다</button>
+        :<input id={inputId} aria-labelledby={`${inputId}-label`} type={q.inputFormat==='email'?'email':q.inputFormat==='phone'?'tel':q.type==='number'?'number':'text'} placeholder={q.inputFormat==='email'?'name@example.com':q.inputFormat==='phone'?'010-0000-0000':undefined} min={q.min} max={q.max} value={String(answers[q.id]??'')} onChange={event=>updatePreviewAnswer(q,q.type==='number'&&event.target.value!==''?Number(event.target.value):event.target.value)}/>}
+      </div>
+    })}
+    {sections.length>1&&<div className="preview-section-actions"><div>{pageHistory.length>0&&<button type="button" onClick={()=>{const previous=pageHistory[pageHistory.length-1];setPageHistory(current=>current.slice(0,-1));setPageIndex(previous)}}><ChevronLeft/> 이전</button>}</div>{atEnd?<button type="button" onClick={restartPreview}><RefreshCcw/> 처음부터</button>:<button type="button" className="primary" onClick={goToNextPreviewSection}>다음 <ChevronRight/></button>}</div>}
+  </div>
 }
 
 function stableShuffle<T>(items:T[],seed:string){
@@ -1061,6 +1110,9 @@ function PublicForm({user,formId,program,questions,theme,endDate,settings,previe
   const sections=useMemo(()=>getQuestionSections(displayQuestions),[displayQuestions])
   const visibleSection=sections[pageIndex]
   const visibleQuestions=visibleSection?.questions??displayQuestions
+  const responseRoute=resolveResponseRoute(displayQuestions,Object.fromEntries(Object.entries(answers)))
+  const responseStep=Math.max(0,responseRoute.sectionIds.indexOf(visibleSection?.id??''))+1
+  const responseStepCount=Math.max(1,responseRoute.sectionIds.length)
   const loginRequired=settings.access.participation!=='anyone'
   const kangnamUser=Boolean(user.emailVerified&&user.email?.toLowerCase().endsWith('@kangnam.ac.kr'))
   const participantAllowed=settings.access.participation==='anyone'
@@ -1198,8 +1250,8 @@ function PublicForm({user,formId,program,questions,theme,endDate,settings,previe
     <div className="public-form card">
       {preview&&<div className="preview-banner" role="status"><Eye aria-hidden="true"/><div><b>응답 화면 미리보기</b><span>입력 화면을 확인할 수 있지만 실제 응답은 제출되지 않습니다.</span></div></div>}
       <FormCover program={program} theme={theme} headingLevel="public" branding={settings.branding}/>
-      <div className="form-progress"><div><b style={{width:`${(pageIndex+1)/Math.max(1,sections.length)*100}%`}}/></div><span>{pageIndex+1} / {Math.max(1,sections.length)} 페이지</span></div>
-      {sections.length>1&&visibleSection&&<div className="public-section-heading"><span>SECTION {pageIndex+1}</span><h2>{visibleSection.title}</h2></div>}
+      <div className="form-progress"><div><b style={{width:`${responseStep/responseStepCount*100}%`}}/></div><span>{responseStep} / {responseStepCount} 페이지</span></div>
+      {sections.length>1&&visibleSection&&<div className="public-section-heading"><span>SECTION {responseStep}</span><h2>{visibleSection.title}</h2></div>}
       {user.isAnonymous&&!settings.access.allowMultiple&&<div className="anonymous-limit-note">이 브라우저에서 중복 제출을 방지합니다. 브라우저 데이터 삭제·기기 변경까지 막는 완전한 1인 1회 제한은 아닙니다.</div>}
       {draftError&&<div className="notice draft-error"><span>{draftError}</span><button type="button" onClick={()=>{const draft={formId,actorId:user.uid,formVersion:settings.version,answers:Object.fromEntries(Object.entries(answers)),updatedAt:new Date().toISOString()};void saveResponseDraft(draft).then(()=>{setLastSaved(new Date().toISOString());setDraftError('')}).catch(()=>setDraftError('초안 저장 재시도에 실패했습니다.'))}}><RefreshCcw/> 다시 저장</button></div>}
       {settings.submission.allowDrafts&&lastSaved&&<div className="draft-status" role="status">방금 저장됨 · {new Intl.DateTimeFormat('ko-KR',{timeStyle:'short'}).format(new Date(lastSaved))}</div>}

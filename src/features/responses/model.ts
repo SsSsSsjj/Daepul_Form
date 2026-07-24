@@ -9,6 +9,7 @@ import {
   type ResponseQuery,
   type StoredFormResponse,
 } from '../../types'
+import { answersForResponseRoute } from '../forms/conditionalRouting'
 
 export function settingsFromAiSuggestion(suggestion: GeneratedForm['suggestedSettings']): FormSettings {
   const publicSlug = suggestion.publicSlug.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
@@ -259,15 +260,8 @@ export function downloadTextFile(name: string, text: string, type = 'text/csv;ch
 
 export function createSampleResponses(questions: FormQuestion[], count = 10): StoredFormResponse[] {
   const names = ['김민준', '이서연', '박지훈', '최유진', '정하늘', '윤서준', '한지민', '오시우', '강예린', '임도윤']
-  return Array.from({ length: count }, (_, index) => ({
-    id: `sample-${index + 1}`,
-    responseId: `sample-${index + 1}`,
-    submittedAt: new Date(Date.now() - index * 86_400_000).toISOString(),
-    respondentName: names[index % names.length],
-    studentId: `2026${String(index + 1).padStart(4, '0')}`,
-    respondentEmail: `sample${index + 1}@kangnam.ac.kr`,
-    status: 'submitted',
-    answers: Object.fromEntries(questions.map((question) => {
+  return Array.from({ length: count }, (_, index) => {
+    const generatedAnswers = Object.fromEntries(questions.map((question) => {
       if (question.type === 'rating') return [String(question.id), (index % 5) + 1]
       if (question.type === 'number') return [String(question.id), index + 1]
       if (question.type === 'consent') return [String(question.id), true]
@@ -277,6 +271,16 @@ export function createSampleResponses(questions: FormQuestion[], count = 10): St
       }
       if (question.type === 'select') return [String(question.id), question.options?.[index % Math.max(question.options.length, 1)] ?? '선택 1']
       return [String(question.id), question.type === 'long_text' ? `예시 장문 응답 ${index + 1}` : `예시 답변 ${index + 1}`]
-    })),
-  }))
+    }))
+    return {
+      id: `sample-${index + 1}`,
+      responseId: `sample-${index + 1}`,
+      submittedAt: new Date(Date.now() - index * 86_400_000).toISOString(),
+      respondentName: names[index % names.length],
+      studentId: `2026${String(index + 1).padStart(4, '0')}`,
+      respondentEmail: `sample${index + 1}@kangnam.ac.kr`,
+      status: 'submitted',
+      answers: answersForResponseRoute(questions, generatedAnswers) as StoredFormResponse['answers'],
+    }
+  })
 }
