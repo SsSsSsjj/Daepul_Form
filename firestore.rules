@@ -69,7 +69,16 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.creatorUid == request.auth.uid
         && request.resource.data.formId == formId;
-      allow read: if signedIn() && (resource.data.published == true || canManageForm(formId));
+      // Keep ownership checks on resource.data so an ownerUid-filtered list query
+      // can be proven safe by Firestore. A nested get() cannot authorize a query.
+      allow read: if signedIn() && (
+        resource.data.published == true
+        || resource.data.ownerUid == request.auth.uid
+        || (
+          'collaborators' in resource.data
+          && resource.data.collaborators[request.auth.uid] in ['viewer', 'editor']
+        )
+      );
       allow update: if canEditForm(formId)
         && request.resource.data.ownerUid == resource.data.ownerUid
         && (

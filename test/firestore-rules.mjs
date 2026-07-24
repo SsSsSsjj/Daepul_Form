@@ -3,12 +3,16 @@ import { deleteApp, initializeApp } from 'firebase/app'
 import { connectAuthEmulator, createUserWithEmailAndPassword, getAuth, signInAnonymously } from 'firebase/auth'
 import {
   connectFirestoreEmulator,
+  collection,
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   getFirestore,
+  query,
   setDoc,
   updateDoc,
+  where,
 } from 'firebase/firestore'
 
 const projectId = process.env.GCLOUD_PROJECT || 'daepulform-rules-test'
@@ -61,6 +65,8 @@ try {
       submission: { allowEditAfterSubmit: false },
     },
   })
+  const ownerForms = await getDocs(query(collection(owner.db, 'forms'), where('ownerUid', '==', owner.user.uid)))
+  assert.equal(ownerForms.docs.some((item) => item.id === formId), true, 'An owner can list their own forms')
 
   const initialResponse = await getDoc(responseRef)
   assert.equal(initialResponse.exists(), false, 'A respondent can check that their own response is absent')
