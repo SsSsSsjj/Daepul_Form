@@ -21,7 +21,8 @@ describe('FormPolicyEditor branding guidance', () => {
 
     expect(screen.getByText('제출자에게 답변 사본 보내기')).toBeInTheDocument()
     expect(screen.getByText(/자신이 제출한 답변 내용을 보내는 기능/)).toBeInTheDocument()
-    expect(screen.getByText(/다른 서비스로 응답 데이터를 자동 전송/)).toBeInTheDocument()
+    expect(screen.getByText(/구글 계정을 연결하면 새 응답/)).toBeInTheDocument()
+    expect(screen.getByText('Google 스프레드시트 자동 저장')).toBeInTheDocument()
   })
 
   it('renders and updates the visible link preview', () => {

@@ -73,6 +73,7 @@ export interface FormSettings {
     closedEmail: boolean
   }
   integrations: {
+    formId?: string
     sheetsWebhookUrl?: string
     webhookUrl?: string
   }

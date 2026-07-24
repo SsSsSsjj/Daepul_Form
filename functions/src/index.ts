@@ -22,6 +22,18 @@ import {
 import { buildAuthorizationUrl, exchangeCodeForProfile, type ProviderCredentials } from './auth/providers'
 import { FirestoreOAuthSessionRepository, OAuthSessionService } from './auth/sessions'
 import { createFormCallables, scoreQuizAnswers } from './forms'
+import {
+  appendGoogleSheetResponse,
+  buildGoogleSheetsAuthorizationUrl,
+  createGoogleSpreadsheet,
+  exchangeGoogleSheetsCode,
+  listGoogleSpreadsheets,
+  prepareGoogleSpreadsheet,
+  refreshGoogleAccessToken,
+  updateGoogleSheetHeaders,
+  type GoogleSheetsConnection,
+  type SheetsResponsePayload,
+} from './googleSheets'
 
 type Response = Parameters<Parameters<typeof onRequest>[0]>[1]
 
@@ -35,6 +47,15 @@ const kakaoClientId = defineSecret('KAKAO_CLIENT_ID')
 const kakaoClientSecret = defineSecret('KAKAO_CLIENT_SECRET')
 const naverClientId = defineSecret('NAVER_CLIENT_ID')
 const naverClientSecret = defineSecret('NAVER_CLIENT_SECRET')
+const googleSheetsClientId = defineString('GOOGLE_SHEETS_CLIENT_ID', {
+  default: '',
+  description: 'Google Sheets 연결용 OAuth 웹 클라이언트 ID',
+})
+const googleSheetsRedirectUri = defineString('GOOGLE_SHEETS_REDIRECT_URI', {
+  default: 'https://asia-northeast3-daepulform.cloudfunctions.net/googleSheetsOAuthCallback',
+  description: 'Google Cloud Console에 등록한 Sheets OAuth 콜백 URL',
+})
+const googleSheetsClientSecret = defineSecret('GOOGLE_SHEETS_CLIENT_SECRET')
 
 const sessionService = new OAuthSessionService(new FirestoreOAuthSessionRepository(getFirestore()))
 const accountAuth = new FirebaseAdminAuthGateway(getAuth())
@@ -295,12 +316,14 @@ export const submitFormResponse = onCall({
   const database = getFirestore()
   const formRef = database.doc(`forms/${formId}`)
   const quizConfigRef = formRef.collection('quiz').doc('config')
+  const sheetsConnectionRef = formRef.collection('privateIntegrations').doc('googleSheets')
   const provider = stringValue(authContext.token.firebase?.sign_in_provider)
   const anonymous = provider === 'anonymous'
   const result = await database.runTransaction(async (transaction) => {
-    const [formSnapshot, quizConfigSnapshot] = await Promise.all([
+    const [formSnapshot, quizConfigSnapshot, sheetsConnectionSnapshot] = await Promise.all([
       transaction.get(formRef),
       transaction.get(quizConfigRef),
+      transaction.get(sheetsConnectionRef),
     ])
     if (!formSnapshot.exists) throw new HttpsError('not-found', '폼을 찾을 수 없습니다.')
     const form = formSnapshot.data() ?? {}
@@ -399,6 +422,7 @@ export const submitFormResponse = onCall({
       responseEmail,
       sendOwnerNotification: settings?.notifications?.newResponseEmail === true,
       sendReceipt: settings?.submission?.emailReceipt === true,
+      googleSheetsConnected: sheetsConnectionSnapshot.data()?.status === 'connected',
       integrationUrls: [
         stringValue(settings?.integrations?.sheetsWebhookUrl, 1000),
         stringValue(settings?.integrations?.webhookUrl, 1000),
@@ -412,6 +436,12 @@ export const submitFormResponse = onCall({
         respondentName: stringValue(payload.respondentName),
         studentId: stringValue(payload.studentId, 40),
         answers,
+        answerLabels: Object.fromEntries(
+          (Array.isArray(form.questions)?form.questions:[]).map((item) => {
+            const question=item&&typeof item==='object'?item as Record<string,unknown>:{}
+            return [String(question.id??''),stringValue(question.label)||'질문']
+          }).filter(([id])=>id),
+        ),
         ...(quizResult ? { quizResult: {
           score: quizResult.score,
           maxScore: quizResult.maxScore,
@@ -460,6 +490,17 @@ export const submitFormResponse = onCall({
       createdAt: FieldValue.serverTimestamp(),
     }))
   }
+  if (result.googleSheetsConnected) {
+    deliveries.push(database.collection('integrationDeliveries').add({
+      provider: 'googleSheets',
+      payload: result.integrationPayload,
+      formId,
+      responseId: result.responseId,
+      status: 'queued',
+      attempts: 0,
+      createdAt: FieldValue.serverTimestamp(),
+    }))
+  }
   await Promise.allSettled(deliveries)
   return {
     responseId: result.responseId,
@@ -490,9 +531,44 @@ function safeIntegrationUrl(value: unknown) {
   }
 }
 
+async function activeGoogleSheetsConnection(formId:string,requireSpreadsheet=true){
+  const connectionRef=getFirestore().doc(`forms/${formId}/privateIntegrations/googleSheets`)
+  const snapshot=await connectionRef.get()
+  if(!snapshot.exists)throw new Error('google-sheets-not-connected')
+  const connection=snapshot.data() as GoogleSheetsConnection
+  if(!connection.refreshToken
+    ||(connection.status!=='authorized'&&connection.status!=='connected')
+    ||(requireSpreadsheet&&(!connection.spreadsheetId||connection.status!=='connected'))){
+    throw new Error('google-sheets-not-connected')
+  }
+  if(connection.accessToken&&Number(connection.accessTokenExpiresAt??0)>Date.now()+60_000){
+    return {connectionRef,connection,accessToken:connection.accessToken}
+  }
+  const clientId=googleSheetsClientId.value()
+  const clientSecret=googleSheetsClientSecret.value()
+  if(!clientId||!clientSecret)throw new Error('google-sheets-oauth-not-configured')
+  const token=await refreshGoogleAccessToken({
+    clientId,
+    clientSecret,
+    refreshToken:connection.refreshToken,
+  })
+  const accessTokenExpiresAt=Date.now()+token.expiresIn*1000
+  await connectionRef.set({
+    accessToken:token.accessToken,
+    accessTokenExpiresAt,
+    updatedAt:FieldValue.serverTimestamp(),
+  },{merge:true})
+  return {
+    connectionRef,
+    connection:{...connection,accessToken:token.accessToken,accessTokenExpiresAt},
+    accessToken:token.accessToken,
+  }
+}
+
 export const deliverResponseIntegration = onDocumentCreated({
   document: 'integrationDeliveries/{deliveryId}',
   region: 'asia-northeast3',
+  secrets: [googleSheetsClientSecret],
   retry: true,
   timeoutSeconds: 30,
   memory: '256MiB',
@@ -500,12 +576,57 @@ export const deliverResponseIntegration = onDocumentCreated({
   const snapshot = event.data
   if (!snapshot) return
   const data = snapshot.data()
+  const attempts = Number(data.attempts ?? 0) + 1
+  if(data.provider==='googleSheets'){
+    try{
+      const formId=stringValue(data.formId,120)
+      const payload=data.payload as SheetsResponsePayload
+      const {connectionRef,connection,accessToken}=await activeGoogleSheetsConnection(formId)
+      const answers=payload.answers&&typeof payload.answers==='object'?payload.answers:{}
+      const answerLabels=payload.answerLabels&&typeof payload.answerLabels==='object'?payload.answerLabels:{}
+      const columns=Array.isArray(connection.columns)?connection.columns.map(String):[]
+      const nextColumns=[...columns]
+      for(const id of Object.keys(answers)){
+        if(!nextColumns.includes(id))nextColumns.push(id)
+      }
+      const columnLabels={...(connection.columnLabels??{}),...answerLabels}
+      if(nextColumns.length!==columns.length){
+        await updateGoogleSheetHeaders({
+          accessToken,
+          spreadsheetId:connection.spreadsheetId!,
+          columns:nextColumns,
+          columnLabels,
+        })
+        await connectionRef.set({columns:nextColumns,columnLabels,updatedAt:FieldValue.serverTimestamp()},{merge:true})
+      }
+      await appendGoogleSheetResponse({
+        accessToken,
+        spreadsheetId:connection.spreadsheetId!,
+        payload,
+        columns:nextColumns,
+      })
+      await snapshot.ref.update({
+        status:'sent',
+        attempts,
+        sentAt:FieldValue.serverTimestamp(),
+        updatedAt:FieldValue.serverTimestamp(),
+      })
+    }catch(error){
+      await snapshot.ref.update({
+        status:attempts>=5?'failed':'retrying',
+        attempts,
+        error:error instanceof Error?error.message.slice(0,300):'google-sheets-delivery-failed',
+        updatedAt:FieldValue.serverTimestamp(),
+      })
+      if(attempts<5)throw error
+    }
+    return
+  }
   const targetUrl = safeIntegrationUrl(data.targetUrl)
   if (!targetUrl) {
     await snapshot.ref.update({ status: 'failed', error: 'invalid-target-url', updatedAt: FieldValue.serverTimestamp() })
     return
   }
-  const attempts = Number(data.attempts ?? 0) + 1
   try {
     const response = await fetch(targetUrl, {
       method: 'POST',
@@ -569,6 +690,209 @@ function canEditFormData(form: Record<string, unknown>, uid: string) {
     : {}
   return form.ownerUid === uid || collaborators[uid] === 'editor'
 }
+
+async function editableGoogleSheetsForm(formId:string,uid:string){
+  const database=getFirestore()
+  const formSnapshot=await database.doc(`forms/${formId}`).get()
+  if(!formSnapshot.exists)throw new HttpsError('not-found','폼을 찾을 수 없습니다.')
+  const form=formSnapshot.data()??{}
+  if(!canEditFormData(form,uid))throw new HttpsError('permission-denied','Google Sheets 연결 권한이 없습니다.')
+  return {database,form}
+}
+
+function googleSheetsQuestionColumns(form:Record<string,unknown>){
+  const questions=Array.isArray(form.questions)?form.questions:[]
+  const columns:string[]=[]
+  const columnLabels:Record<string,string>={}
+  for(const item of questions){
+    const question=item&&typeof item==='object'?item as Record<string,unknown>:{}
+    const id=String(question.id??'').trim()
+    if(!id||columns.includes(id))continue
+    columns.push(id)
+    columnLabels[id]=stringValue(question.label)||'질문'
+  }
+  return {columns,columnLabels}
+}
+
+export const beginGoogleSheetsConnection=onCall(responseCallableOptions,async(request)=>{
+  if(!request.auth||request.auth.token.firebase?.sign_in_provider==='anonymous'){
+    throw new HttpsError('unauthenticated','제작자 로그인이 필요합니다.')
+  }
+  const formId=stringValue(request.data?.formId,120)
+  await editableGoogleSheetsForm(formId,request.auth.uid)
+  const clientId=googleSheetsClientId.value()
+  if(!clientId)throw new HttpsError('failed-precondition','Google Sheets OAuth 설정이 필요합니다.')
+  const state=crypto.randomUUID().replaceAll('-','')
+  const database=getFirestore()
+  await database.doc(`googleSheetsOauthStates/${state}`).set({
+    uid:request.auth.uid,
+    formId,
+    origin:normalizePublicOrigin(authPublicOrigin.value()),
+    expiresAt:Timestamp.fromMillis(Date.now()+10*60*1000),
+    createdAt:FieldValue.serverTimestamp(),
+  })
+  return {
+    authorizationUrl:buildGoogleSheetsAuthorizationUrl({
+      clientId,
+      redirectUri:googleSheetsRedirectUri.value(),
+      state,
+      loginHint:stringValue(request.auth.token.email,320),
+    }),
+  }
+})
+
+export const googleSheetsOAuthCallback=onRequest({
+  region:'asia-northeast3',
+  secrets:[googleSheetsClientSecret],
+  timeoutSeconds:30,
+  memory:'256MiB',
+  maxInstances:20,
+},async(request,response)=>{
+  response.set({'Cache-Control':'no-store, max-age=0','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'})
+  const state=stringValue(request.query.state,200)
+  const code=stringValue(request.query.code,2000)
+  const stateRef=getFirestore().doc(`googleSheetsOauthStates/${state}`)
+  try{
+    if(request.method!=='GET'||!state||!code||request.query.error)throw new Error('oauth-cancelled')
+    const stateSnapshot=await stateRef.get()
+    if(!stateSnapshot.exists)throw new Error('oauth-state-invalid')
+    const stateData=stateSnapshot.data()??{}
+    await stateRef.delete()
+    const expiresAt=stateData.expiresAt instanceof Timestamp?stateData.expiresAt.toMillis():0
+    if(expiresAt<Date.now())throw new Error('oauth-state-expired')
+    const uid=stringValue(stateData.uid,128)
+    const formId=stringValue(stateData.formId,120)
+    const origin=normalizePublicOrigin(stateData.origin)
+    await editableGoogleSheetsForm(formId,uid)
+    const token=await exchangeGoogleSheetsCode({
+      clientId:googleSheetsClientId.value(),
+      clientSecret:googleSheetsClientSecret.value(),
+      redirectUri:googleSheetsRedirectUri.value(),
+      code,
+    })
+    const connectionRef=getFirestore().doc(`forms/${formId}/privateIntegrations/googleSheets`)
+    const existing=await connectionRef.get()
+    const refreshToken=token.refreshToken||stringValue(existing.data()?.refreshToken,2000)
+    if(!refreshToken)throw new Error('google-refresh-token-missing')
+    await connectionRef.set({
+      ownerUid:uid,
+      refreshToken,
+      accessToken:token.accessToken,
+      accessTokenExpiresAt:Date.now()+token.expiresIn*1000,
+      status:'authorized',
+      authorizedAt:FieldValue.serverTimestamp(),
+      updatedAt:FieldValue.serverTimestamp(),
+    },{merge:true})
+    const nonce=crypto.randomUUID().replaceAll('-','')
+    response.set('Content-Security-Policy',`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'`)
+    const message=JSON.stringify({type:'daepulform-google-sheets-connected',formId})
+    const targetOrigin=JSON.stringify(origin)
+    response.status(200).send(`<!doctype html><html lang="ko"><meta charset="utf-8"><title>연결 완료</title><style>body{font-family:sans-serif;text-align:center;padding:48px;color:#173d32}a{color:#087fc5}</style><h1>Google 계정 연결 완료</h1><p>대플폼으로 돌아가 스프레드시트를 선택해 주세요.</p><a href="${origin}">대플폼으로 돌아가기</a><script nonce="${nonce}">if(window.opener){window.opener.postMessage(${message},${targetOrigin});window.close()}</script></html>`)
+  }catch(error){
+    if(state)await stateRef.delete().catch(()=>undefined)
+    logger.warn('Google Sheets OAuth callback failed',error)
+    response.set('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
+    response.status(400).send('<!doctype html><html lang="ko"><meta charset="utf-8"><title>연결 실패</title><style>body{font-family:sans-serif;text-align:center;padding:48px;color:#8b3f31}</style><h1>Google Sheets 연결 실패</h1><p>창을 닫고 대플폼에서 다시 시도해 주세요.</p></html>')
+  }
+})
+
+export const getGoogleSheetsConnection=onCall(responseCallableOptions,async(request)=>{
+  if(!request.auth||request.auth.token.firebase?.sign_in_provider==='anonymous'){
+    throw new HttpsError('unauthenticated','제작자 로그인이 필요합니다.')
+  }
+  const formId=stringValue(request.data?.formId,120)
+  const {database}=await editableGoogleSheetsForm(formId,request.auth.uid)
+  const snapshot=await database.doc(`forms/${formId}/privateIntegrations/googleSheets`).get()
+  if(!snapshot.exists)return {status:'disconnected'}
+  const connection=snapshot.data()??{}
+  return {
+    status:stringValue(connection.status,30)||'disconnected',
+    spreadsheetId:stringValue(connection.spreadsheetId,200),
+    spreadsheetTitle:stringValue(connection.spreadsheetTitle),
+    spreadsheetUrl:connection.spreadsheetId?`https://docs.google.com/spreadsheets/d/${encodeURIComponent(String(connection.spreadsheetId))}/edit`:'',
+  }
+})
+
+const googleSheetsCallableOptions={...responseCallableOptions,secrets:[googleSheetsClientSecret]}
+
+export const listAvailableGoogleSpreadsheets=onCall(googleSheetsCallableOptions,async(request)=>{
+  if(!request.auth||request.auth.token.firebase?.sign_in_provider==='anonymous'){
+    throw new HttpsError('unauthenticated','제작자 로그인이 필요합니다.')
+  }
+  const formId=stringValue(request.data?.formId,120)
+  await editableGoogleSheetsForm(formId,request.auth.uid)
+  try{
+    const {accessToken}=await activeGoogleSheetsConnection(formId,false)
+    return {items:await listGoogleSpreadsheets(accessToken)}
+  }catch(error){
+    logger.warn('Unable to list Google spreadsheets',error)
+    throw new HttpsError('failed-precondition','Google 계정을 다시 연결해 주세요.')
+  }
+})
+
+export const selectGoogleSpreadsheet=onCall(googleSheetsCallableOptions,async(request)=>{
+  if(!request.auth||request.auth.token.firebase?.sign_in_provider==='anonymous'){
+    throw new HttpsError('unauthenticated','제작자 로그인이 필요합니다.')
+  }
+  const formId=stringValue(request.data?.formId,120)
+  const spreadsheetId=stringValue(request.data?.spreadsheetId,200)
+  if(!spreadsheetId)throw new HttpsError('invalid-argument','스프레드시트를 선택해 주세요.')
+  const {database,form}=await editableGoogleSheetsForm(formId,request.auth.uid)
+  const {accessToken}=await activeGoogleSheetsConnection(formId,false)
+  const {columns,columnLabels}=googleSheetsQuestionColumns(form)
+  try{
+    const prepared=await prepareGoogleSpreadsheet({accessToken,spreadsheetId,columns,columnLabels})
+    await database.doc(`forms/${formId}/privateIntegrations/googleSheets`).set({
+      spreadsheetId,
+      spreadsheetTitle:prepared.title,
+      sheetName:prepared.sheetName,
+      columns,
+      columnLabels,
+      status:'connected',
+      connectedAt:FieldValue.serverTimestamp(),
+      updatedAt:FieldValue.serverTimestamp(),
+    },{merge:true})
+    return {status:'connected',spreadsheetId,spreadsheetTitle:prepared.title,spreadsheetUrl:`https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/edit`}
+  }catch(error){
+    logger.warn('Unable to select Google spreadsheet',error)
+    throw new HttpsError('permission-denied','선택한 스프레드시트에 쓸 수 있는지 확인해 주세요.')
+  }
+})
+
+export const createAndConnectGoogleSpreadsheet=onCall(googleSheetsCallableOptions,async(request)=>{
+  if(!request.auth||request.auth.token.firebase?.sign_in_provider==='anonymous'){
+    throw new HttpsError('unauthenticated','제작자 로그인이 필요합니다.')
+  }
+  const formId=stringValue(request.data?.formId,120)
+  const {database,form}=await editableGoogleSheetsForm(formId,request.auth.uid)
+  const {accessToken}=await activeGoogleSheetsConnection(formId,false)
+  const formTitle=stringValue((form.program as Record<string,unknown>|undefined)?.programName)||'대플폼'
+  const created=await createGoogleSpreadsheet(accessToken,`${formTitle} 응답`)
+  const {columns,columnLabels}=googleSheetsQuestionColumns(form)
+  await prepareGoogleSpreadsheet({accessToken,spreadsheetId:created.id,columns,columnLabels})
+  await database.doc(`forms/${formId}/privateIntegrations/googleSheets`).set({
+    spreadsheetId:created.id,
+    spreadsheetTitle:created.name,
+    sheetName:'대플폼 응답',
+    columns,
+    columnLabels,
+    status:'connected',
+    connectedAt:FieldValue.serverTimestamp(),
+    updatedAt:FieldValue.serverTimestamp(),
+  },{merge:true})
+  return {status:'connected',spreadsheetId:created.id,spreadsheetTitle:created.name,spreadsheetUrl:`https://docs.google.com/spreadsheets/d/${encodeURIComponent(created.id)}/edit`}
+})
+
+export const disconnectGoogleSheets=onCall(responseCallableOptions,async(request)=>{
+  if(!request.auth||request.auth.token.firebase?.sign_in_provider==='anonymous'){
+    throw new HttpsError('unauthenticated','제작자 로그인이 필요합니다.')
+  }
+  const formId=stringValue(request.data?.formId,120)
+  const {database}=await editableGoogleSheetsForm(formId,request.auth.uid)
+  const connectionRef=database.doc(`forms/${formId}/privateIntegrations/googleSheets`)
+  await connectionRef.delete()
+  return {status:'disconnected'}
+})
 
 function responseIso(value: unknown) {
   return value instanceof Timestamp ? value.toDate().toISOString() : stringValue(value, 80)

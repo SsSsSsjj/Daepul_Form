@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Bell, Building2, CalendarClock, LockKeyhole, Mail, Settings2, Trophy, Type, Users } from 'lucide-react'
 import type { FormSettings, FormLifecycleStatus, IdentityCollection, ParticipationPolicy } from '../../types'
 import { toLocalDateTimeInputValue } from './dateTime'
+import { GoogleSheetsConnector } from './GoogleSheetsConnector'
 
 export function FormPolicyEditor({
   value,
@@ -155,10 +156,15 @@ export function FormPolicyEditor({
     </section>
     <section>
       <h3><Settings2/> 외부 연동 <span className="optional-badge">선택</span></h3>
-      <p className="section-help">새 응답이 들어올 때 다른 서비스로 응답 데이터를 자동 전송하는 개발자용 기능입니다. 별도 연동이 필요 없다면 비워 두세요.</p>
-      <label>Google Sheets Apps Script 웹앱 URL<input type="url" value={value.integrations.sheetsWebhookUrl ?? ''} onChange={(event) => updateIntegrations({ sheetsWebhookUrl: event.target.value })} placeholder="https://script.google.com/macros/s/.../exec"/></label>
-      <label>일반 웹훅 URL<input type="url" value={value.integrations.webhookUrl ?? ''} onChange={(event) => updateIntegrations({ webhookUrl: event.target.value })} placeholder="https://example.com/hooks/daepul"/></label>
-      <small>새 응답을 HTTPS POST로 전달합니다. 전송 상태와 실패 사유는 서버의 integrationDeliveries 기록에 보관됩니다.</small>
+      <p className="section-help">구글 계정을 연결하면 새 응답이 선택한 스프레드시트에 자동으로 추가됩니다.</p>
+      <GoogleSheetsConnector formId={value.integrations.formId}/>
+      <details className="advanced-webhook-settings">
+        <summary>개발자용 웹훅 설정</summary>
+        <p className="section-help">별도 서버 연동이 필요한 경우에만 사용하세요.</p>
+        <label>Apps Script 웹앱 URL<input type="url" value={value.integrations.sheetsWebhookUrl ?? ''} onChange={(event) => updateIntegrations({ sheetsWebhookUrl: event.target.value })} placeholder="https://script.google.com/macros/s/.../exec"/></label>
+        <label>일반 웹훅 URL<input type="url" value={value.integrations.webhookUrl ?? ''} onChange={(event) => updateIntegrations({ webhookUrl: event.target.value })} placeholder="https://example.com/hooks/daepul"/></label>
+        <small>새 응답을 HTTPS POST로 전달합니다. 전송 상태와 실패 사유는 서버 기록에 보관됩니다.</small>
+      </details>
     </section>
     <p className="policy-security-note"><LockKeyhole/> 참여 정책과 제출 제한은 화면뿐 아니라 Firestore 보안 규칙에서 다시 확인합니다.</p>
     <p className="policy-security-note"><Bell/> 이메일 발송은 운영 환경의 Firebase Trigger Email 설정이 필요합니다.</p>

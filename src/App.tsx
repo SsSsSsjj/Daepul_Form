@@ -369,7 +369,7 @@ export default function App() {
         checkForExistingResponses: published,
       })
       const separatedFromExistingResponses = publishedFormId !== formId
-      setFormId(publishedFormId); setPublished(true); setFormSettings((current)=>({...current,version:separatedFromExistingResponses?1:published?current.version+1:1}))
+      setFormId(publishedFormId); setPublished(true); setFormSettings((current)=>({...current,integrations:{...current.integrations,formId:publishedFormId},version:separatedFromExistingResponses?1:published?current.version+1:1}))
       setMessage(separatedFromExistingResponses
         ? '기존 응답을 보호하기 위해 새 폼으로 분리했습니다. 아래의 새 공개 링크를 사용해 주세요.'
         : '실제 공개 링크가 생성되었습니다. 이제 응답이 Firestore에 저장됩니다.')
@@ -577,7 +577,7 @@ export default function App() {
         optionImageUrls: question.optionImageUrls ? [...question.optionImageUrls] : undefined,
       })))
       setFormType(source.formType); setTheme(normalizeTheme(source.theme)); setEndDate(source.surveyEndDate)
-      setFormSettings({ ...normalizeFormSettings(source.settings), publicSlug: undefined, version: normalizeFormSettings(source.settings).version + 1 })
+      setFormSettings({ ...normalizeFormSettings(source.settings), integrations:{...normalizeFormSettings(source.settings).integrations,formId:undefined}, publicSlug: undefined, version: normalizeFormSettings(source.settings).version + 1 })
       setFormId(newFormId()); setPublished(false); setResponses([]); setResponsePage(undefined); setPage('edit')
       setMessage('폼을 새 복사본으로 불러왔습니다. 검토 후 배포해 주세요.')
     } catch {
@@ -605,7 +605,7 @@ export default function App() {
         correctAnswers:question.correctAnswers?[...question.correctAnswers]:undefined,
       })))
       setFormType(source.formType);setTheme(normalizeTheme(source.theme));setEndDate(source.surveyEndDate)
-      setFormSettings(normalizeFormSettings(source.settings));setFormId(form.id);setPublished(true)
+      setFormSettings({...normalizeFormSettings(source.settings),integrations:{...normalizeFormSettings(source.settings).integrations,formId:form.id}});setFormId(form.id);setPublished(true)
       setResponses([]);setResponsePage(undefined);setCreationMode('manual');setPage('edit')
       setMessage('접수 시작 전 폼을 편집 모드로 불러왔습니다.')
     }catch{
