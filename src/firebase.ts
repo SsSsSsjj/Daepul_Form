@@ -405,6 +405,12 @@ export async function restoreFormRecord(formId: string) {
   })
 }
 
+export async function emptyDeletedForms(): Promise<number> {
+  if (!functions) throw new Error('Firebase Functions가 설정되지 않았습니다.')
+  const result = await httpsCallable<Record<string, never>, { deleted: number }>(functions, 'emptyDeletedForms')({})
+  return Number(result.data.deleted ?? 0)
+}
+
 export async function getFormResponses(formId: string): Promise<StoredFormResponse[]> {
   if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
   const snapshot = await getDocs(collection(db, 'forms', formId, 'responses'))

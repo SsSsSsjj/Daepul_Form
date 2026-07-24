@@ -968,6 +968,17 @@ export const retryFormDelivery = onCall(responseCallableOptions, async (request)
   return { queued: true }
 })
 
+export const emptyDeletedForms = onCall(responseCallableOptions, async (request) => {
+  if (!request.auth || request.auth.token.firebase?.sign_in_provider === 'anonymous') {
+    throw new HttpsError('unauthenticated', '제작자 로그인이 필요합니다.')
+  }
+  const database = getFirestore()
+  const snapshot = await database.collection('forms').where('ownerUid', '==', request.auth.uid).get()
+  const deletedForms = snapshot.docs.filter((document) => Boolean(document.data().deletedAt))
+  await Promise.all(deletedForms.map((document) => database.recursiveDelete(document.ref)))
+  return { deleted: deletedForms.length }
+})
+
 export const processFormScheduleNotifications = onSchedule({
   region: 'asia-northeast3',
   schedule: 'every 15 minutes',
