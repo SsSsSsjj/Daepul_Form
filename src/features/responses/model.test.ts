@@ -45,6 +45,21 @@ describe('public response model', () => {
     expect(validateAnswers(formattedQuestions, { 10: 'student@kangnam.ac.kr', 11: '010-1234-5678' })).toEqual({})
   })
 
+  it('limits the number of checkbox selections', () => {
+    const checkbox: FormQuestion = {
+      id: 12,
+      label: '관심 분야',
+      type: 'checkbox',
+      required: false,
+      options: ['진로', '취업', '창업'],
+      maxSelections: 2,
+    }
+    expect(validateAnswers([checkbox], { 12: ['진로', '취업'] })).toEqual({})
+    expect(validateAnswers([checkbox], { 12: ['진로', '취업', '창업'] })).toEqual({
+      12: '최대 2개까지 선택할 수 있습니다.',
+    })
+  })
+
   it('creates multi-select sample answers from configured checkbox options', () => {
     const checkbox: FormQuestion = { id: 12, label: '관심 분야', type: 'checkbox', required: false, options: ['진로', '취업', '창업'] }
     const [sample] = createSampleResponses([checkbox], 1)

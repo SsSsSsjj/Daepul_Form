@@ -267,6 +267,12 @@ function validateAnswersAgainstQuestions(questions: unknown, answers: Record<str
       && value.some((entry) => !options.includes(entry))) {
       throw new HttpsError('invalid-argument', '체크박스 답변이 올바르지 않습니다.')
     }
+    if (question.type === 'checkbox' && Array.isArray(value)) {
+      const maxSelections = Number(question.maxSelections)
+      if (Number.isFinite(maxSelections) && maxSelections > 0 && value.length > maxSelections) {
+        throw new HttpsError('invalid-argument', `최대 ${maxSelections}개까지 선택할 수 있습니다.`)
+      }
+    }
   }
 }
 

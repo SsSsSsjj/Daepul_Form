@@ -237,8 +237,8 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
     const existingForm = await getDoc(doc(db, 'forms', formId))
     if (existingForm.exists()) {
       responseCount = Number(existingForm.data().responseCount ?? 0)
-      const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options, inputFormat }) => ({
-        id, label, type, required, options: options ?? [], inputFormat: inputFormat ?? 'none',
+      const normalizeQuestions = (items: FormQuestion[]) => items.map(({ id, label, type, required, options, inputFormat, maxSelections }) => ({
+        id, label, type, required, options: options ?? [], inputFormat: inputFormat ?? 'none', maxSelections: maxSelections ?? null,
       }))
       const previousQuestions = (existingForm.data().questions ?? []) as FormQuestion[]
       const questionsChanged = JSON.stringify(normalizeQuestions(previousQuestions)) !== JSON.stringify(normalizeQuestions(questions))

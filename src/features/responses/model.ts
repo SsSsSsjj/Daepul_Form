@@ -143,6 +143,9 @@ export function validateAnswer(question: FormQuestion, value: unknown) {
   if (question.max !== undefined && question.type === 'number' && Number(value) > question.max) {
     return `${question.max} 이하여야 합니다.`
   }
+  if (question.type === 'checkbox' && Array.isArray(value) && question.maxSelections && value.length > question.maxSelections) {
+    return `최대 ${question.maxSelections}개까지 선택할 수 있습니다.`
+  }
   if (question.pattern) {
     try {
       if (!new RegExp(question.pattern).test(text)) return '입력 형식이 올바르지 않습니다.'

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type DragEvent } from 'react'
-import { ArrowDown, ArrowUp, BarChart3, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Copy, Download, Eye, FileText, Flower2, GraduationCap, Heart, House, Leaf, LayoutDashboard, LoaderCircle, LogIn, LogOut, Palette, Plus, QrCode, RefreshCcw, Send, Snowflake, Sparkles, Sun, Trash2, Upload, WandSparkles, Waves } from 'lucide-react'
+import { ArrowDown, ArrowUp, BarChart3, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Copy, Download, Eye, FileText, Flower2, GraduationCap, GripVertical, Heart, House, Leaf, LayoutDashboard, LoaderCircle, LogIn, LogOut, Palette, Plus, QrCode, RefreshCcw, Send, Snowflake, Sparkles, Sun, Trash2, Upload, WandSparkles, Waves } from 'lucide-react'
 import QRCode from 'qrcode'
 import writeXlsxFile, { type SheetData } from 'write-excel-file/browser'
 import kangnamPromotionBar from './assets/kangnam-promotion-bar.png'
@@ -38,6 +38,7 @@ const serviceSampleQuestions: FormQuestion[] = [
 const typeLabels = { short_text: '단답형', long_text: '장문형', select: '객관식', checkbox: '체크박스', consent: '개인정보 동의', rating: '1~5점 평점', number: '숫자', file: '파일 업로드' }
 const legacyQuestionPlaceholders = new Set(['질문을 입력해 주세요', '새 질문'])
 const editableQuestionLabel = (label: string) => legacyQuestionPlaceholders.has(label.trim()) ? '' : label
+const editableOptionLabel = (label: string) => /^선택지 \d+$/.test(label.trim()) ? '' : label
 const draftStorageKey = 'daepul-form-creator-draft'
 const selectableThemes: Array<{ id: SelectableTheme; label: string; description: string }> = [
   { id: 'green', label: '기본 디자인', description: '단정하고 편안한 기본 폼' },
@@ -345,7 +346,7 @@ export default function App() {
     if (!program.programName || !questions.length) { setMessage('폼 제목과 질문을 확인해 주세요.'); return }
     const unnamedQuestionIndex=questions.findIndex(question=>!editableQuestionLabel(question.label).trim())
     if(unnamedQuestionIndex>=0){setMessage(`${unnamedQuestionIndex+1}번 질문 내용을 입력해 주세요.`);return}
-    const invalidChoiceQuestion=questions.find(question=>(question.type==='select'||question.type==='checkbox')&&new Set((question.options??[]).map(option=>option.trim()).filter(Boolean)).size<2)
+    const invalidChoiceQuestion=questions.find(question=>(question.type==='select'||question.type==='checkbox')&&new Set((question.options??[]).map(option=>editableOptionLabel(option).trim()).filter(Boolean)).size<2)
     if(invalidChoiceQuestion){setMessage(`"${invalidChoiceQuestion.label}" 질문에 서로 다른 선택지를 2개 이상 입력해 주세요.`);return}
     if(formSettings.quiz.enabled&&!questions.some(question=>(question.points??0)>0&&(question.correctAnswers?.length??0)>0)){setMessage('퀴즈 모드에는 정답과 1점 이상의 배점이 설정된 문항이 필요합니다. 폼 수정 화면에서 설정해 주세요.');return}
     if(formSettings.workspace.enabled&&(!formSettings.workspace.name.trim()||!formSettings.workspace.emailDomain.includes('.'))){setMessage('조직 공유 공간 이름과 올바른 이메일 도메인을 입력해 주세요.');return}
@@ -626,7 +627,7 @@ function QuestionEditor({question,index,count,onChange,onMove,onDelete}:{
   const label=editableQuestionLabel(question.label)
   const questionName=label.trim()||`${index+1}번 질문`
   const options=question.options?.length?question.options:['','']
-  const editableOption=(option:string,optionIndex:number)=>option.trim()===`선택지 ${optionIndex+1}`?'':option
+  const [draggedOptionIndex,setDraggedOptionIndex]=useState<number|null>(null)
   const changeType=(type:FormQuestion['type'])=>{
     const nextSelectable=type==='select'||type==='checkbox'
     onChange({
@@ -636,7 +637,17 @@ function QuestionEditor({question,index,count,onChange,onMove,onDelete}:{
     })
   }
   const updateOption=(optionIndex:number,value:string)=>onChange({options:options.map((option,current)=>current===optionIndex?value:option)})
-  const removeOption=(optionIndex:number)=>onChange({options:options.filter((_,current)=>current!==optionIndex)})
+  const removeOption=(optionIndex:number)=>{
+    const nextOptions=options.filter((_,current)=>current!==optionIndex)
+    onChange({options:nextOptions,maxSelections:question.maxSelections?Math.min(question.maxSelections,nextOptions.length):undefined})
+  }
+  const moveOption=(from:number,to:number)=>{
+    if(from===to)return
+    const nextOptions=[...options]
+    const [moved]=nextOptions.splice(from,1)
+    nextOptions.splice(to,0,moved)
+    onChange({options:nextOptions})
+  }
   return <article className="question-editor">
     <div className="question">
       <div className="question-order" aria-label={`${index+1}번 질문 순서 조정`}><span>{index+1}</span><button type="button" aria-label={`${questionName} 위로 이동`} disabled={index===0} onClick={()=>onMove(-1)}><ArrowUp size={15}/></button><button type="button" aria-label={`${questionName} 아래로 이동`} disabled={index===count-1} onClick={()=>onMove(1)}><ArrowDown size={15}/></button></div>
@@ -646,7 +657,7 @@ function QuestionEditor({question,index,count,onChange,onMove,onDelete}:{
       <button type="button" aria-label={`${questionName} 삭제`} onClick={onDelete}><Trash2 size={16}/></button>
     </div>
     {question.type==='short_text'&&<div className="response-validation"><label>답변 형식<select value={question.inputFormat??'none'} onChange={(event)=>onChange({inputFormat:event.target.value as FormQuestion['inputFormat']})}><option value="none">제한 없음</option><option value="email">이메일 주소</option><option value="phone">휴대전화 010-0000-0000</option></select></label><small>{question.inputFormat==='email'?'올바른 이메일 주소가 아니면 제출할 수 없습니다.':question.inputFormat==='phone'?'하이픈(-)을 포함한 010-0000-0000 형식만 허용합니다.':'필요하면 이메일이나 휴대전화 형식을 지정하세요.'}</small></div>}
-    {selectable&&<fieldset className="option-editor"><legend>{question.type==='checkbox'?'체크박스 선택지':'객관식 선택지'} <span>{options.length}개</span></legend><p>{question.type==='checkbox'?'응답자는 아래 항목을 여러 개 선택할 수 있습니다.':'응답자는 아래 항목 중 하나를 선택합니다.'}</p>{options.map((option,optionIndex)=><div key={optionIndex}><span aria-hidden="true">{question.type==='checkbox'?'□':'○'}</span><input aria-label={`선택지 ${optionIndex+1}`} value={editableOption(option,optionIndex)} onChange={(event)=>updateOption(optionIndex,event.target.value)} placeholder={`선택지 ${optionIndex+1}`}/><button type="button" aria-label={`선택지 ${optionIndex+1} 삭제`} disabled={options.length<=2} onClick={()=>removeOption(optionIndex)}><Trash2 size={15}/></button></div>)}<button type="button" className="add-option" disabled={options.length>=50} onClick={()=>onChange({options:[...options,'']})}><Plus size={16}/> 선택지 추가</button></fieldset>}
+    {selectable&&<fieldset className="option-editor"><legend>{question.type==='checkbox'?'체크박스 선택지':'객관식 선택지'} <span>{options.length}개</span></legend><p>{question.type==='checkbox'?'응답자는 아래 항목을 여러 개 선택할 수 있습니다.':'응답자는 아래 항목 중 하나를 선택합니다.'} 손잡이를 드래그해 순서를 바꿀 수 있습니다.</p>{options.map((option,optionIndex)=><div key={optionIndex} className={draggedOptionIndex===optionIndex?'dragging':''} onDragOver={(event)=>event.preventDefault()} onDrop={(event)=>{event.preventDefault();if(draggedOptionIndex!==null)moveOption(draggedOptionIndex,optionIndex);setDraggedOptionIndex(null)}}><button type="button" className="option-drag-handle" draggable aria-label={`선택지 ${optionIndex+1} 순서 변경`} title="드래그해서 순서 변경" onDragStart={(event)=>{setDraggedOptionIndex(optionIndex);event.dataTransfer.effectAllowed='move'}} onDragEnd={()=>setDraggedOptionIndex(null)} onKeyDown={(event)=>{if(event.key==='ArrowUp'&&optionIndex>0){event.preventDefault();moveOption(optionIndex,optionIndex-1)}if(event.key==='ArrowDown'&&optionIndex<options.length-1){event.preventDefault();moveOption(optionIndex,optionIndex+1)}}}><GripVertical size={17}/></button><span aria-hidden="true">{question.type==='checkbox'?'□':'○'}</span><input aria-label={`선택지 ${optionIndex+1}`} value={editableOptionLabel(option)} onChange={(event)=>updateOption(optionIndex,event.target.value)} placeholder={`선택지 ${optionIndex+1}`}/><button type="button" aria-label={`선택지 ${optionIndex+1} 삭제`} disabled={options.length<=2} onClick={()=>removeOption(optionIndex)}><Trash2 size={15}/></button></div>)}<div className="option-editor-actions"><button type="button" className="add-option" disabled={options.length>=50} onClick={()=>onChange({options:[...options,'']})}><Plus size={16}/> 선택지 추가</button>{question.type==='checkbox'&&<label>최대 선택 개수<input type="number" min="1" max={options.length} value={question.maxSelections??''} placeholder="제한 없음" onChange={(event)=>{const value=Number(event.target.value);onChange({maxSelections:event.target.value===''?undefined:Math.max(1,Math.min(options.length,value))})}}/></label>}</div></fieldset>}
   </article>
 }
 
@@ -915,7 +926,7 @@ function PublicForm({user,formId,program,questions,theme,endDate,settings,previe
           :q.type==='select'?<select id={inputId} aria-labelledby={labelId} aria-invalid={Boolean(fieldError)} value={String(answers[q.id]??'')} onChange={e=>updateAnswer(q,e.target.value)}><option value="">선택해 주세요</option>{(q.randomizeOptions?stableShuffle(q.options?.length?q.options:['예','아니오'],`${user.uid}:${q.id}`):(q.options?.length?q.options:['예','아니오'])).map(o=><option key={o}>{o}</option>)}</select>
           :q.type==='rating'?<div id={inputId} className="rating input" role="radiogroup" aria-labelledby={labelId}>{[1,2,3,4,5].map(n=><button className={answers[q.id]===n?'active':''} aria-checked={answers[q.id]===n} role="radio" onClick={()=>updateAnswer(q,n)} type="button" key={n}>{n}</button>)}</div>
           :q.type==='consent'?<label className="check-line" htmlFor={inputId}><input id={inputId} type="checkbox" checked={Boolean(answers[q.id])} onChange={e=>updateAnswer(q,e.target.checked)}/><span>개인정보 수집·이용에 동의합니다.</span></label>
-          :q.type==='checkbox'&&q.options?.length?<fieldset id={inputId} className="checkbox-options" aria-labelledby={labelId}>{(q.randomizeOptions?stableShuffle(q.options,`${user.uid}:${q.id}`):q.options).map((option,index)=>{const selected=Array.isArray(answers[q.id])?answers[q.id] as string[]:[];return <label className="check-line" key={option}><input type="checkbox" checked={selected.includes(option)} onChange={event=>updateAnswer(q,event.target.checked?[...selected,option]:selected.filter(item=>item!==option))}/><span>{option}</span>{index===0&&<span className="sr-only">여러 개 선택 가능</span>}</label>})}</fieldset>
+          :q.type==='checkbox'&&q.options?.length?<fieldset id={inputId} className="checkbox-options" aria-labelledby={labelId}>{q.maxSelections&&<small className="selection-limit">최대 {q.maxSelections}개까지 선택할 수 있습니다.</small>}{(q.randomizeOptions?stableShuffle(q.options,`${user.uid}:${q.id}`):q.options).map((option,index)=>{const selected=Array.isArray(answers[q.id])?answers[q.id] as string[]:[];const selectionLimitReached=Boolean(q.maxSelections&&selected.length>=q.maxSelections&&!selected.includes(option));return <label className="check-line" key={option}><input type="checkbox" checked={selected.includes(option)} disabled={selectionLimitReached} onChange={event=>updateAnswer(q,event.target.checked&&(!q.maxSelections||selected.length<q.maxSelections)?[...selected,option]:selected.filter(item=>item!==option))}/><span>{option}</span>{index===0&&<span className="sr-only">여러 개 선택 가능</span>}</label>})}</fieldset>
           :q.type==='checkbox'?<label className="check-line" htmlFor={inputId}><input id={inputId} type="checkbox" checked={Boolean(answers[q.id])} onChange={e=>updateAnswer(q,e.target.checked)}/><span>선택합니다.</span></label>
           :q.type==='file'?<div className="response-file-upload"><input id={inputId} type="file" onChange={event=>{const file=event.target.files?.[0];if(!file)return;setUploadError(current=>({...current,[q.id]:''}));void uploadResponseAttachment({formId,user,questionId:q.id,file,onProgress:percentage=>setUploadProgress(current=>({...current,[q.id]:percentage}))}).then(attachment=>{setAttachments(current=>[...current.filter(item=>item.questionId!==q.id),attachment]);updateAnswer(q,attachment.name)}).catch(uploadIssue=>setUploadError(current=>({...current,[q.id]:uploadIssue instanceof Error&&uploadIssue.message==='file-too-large'?'파일은 20MB 이하만 업로드할 수 있습니다.':'업로드에 실패했습니다. 다시 선택해 주세요.'})))}}/>{uploadProgress[q.id]>0&&uploadProgress[q.id]<100&&<progress value={uploadProgress[q.id]} max="100">{uploadProgress[q.id]}%</progress>}{attachments.find(item=>item.questionId===q.id)&&<small>{attachments.find(item=>item.questionId===q.id)?.name} 업로드 완료</small>}{uploadError[q.id]&&<small className="field-error" role="alert">{uploadError[q.id]}</small>}</div>
           :<input id={inputId} aria-labelledby={labelId} aria-invalid={Boolean(fieldError)} aria-describedby={fieldError?`${inputId}-error`:undefined} inputMode={q.inputFormat==='email'?'email':q.inputFormat==='phone'?'tel':q.type==='number'?'numeric':undefined} type={q.inputFormat==='email'?'email':q.inputFormat==='phone'?'tel':q.type==='number'?'number':'text'} placeholder={q.inputFormat==='email'?'name@example.com':q.inputFormat==='phone'?'010-0000-0000':undefined} min={q.min} max={q.max} value={String(answers[q.id]??'')} onChange={e=>updateAnswer(q,q.type==='number'&&e.target.value!==''?Number(e.target.value):e.target.value)}/>}
