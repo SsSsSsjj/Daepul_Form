@@ -538,52 +538,57 @@ export async function setFormCollaborator(
 }
 
 export type GoogleSheetsConnectionStatus = {
-  status: 'disconnected'|'authorized'|'connected'
+  status: 'disconnected'|'connected'
   spreadsheetId?: string
   spreadsheetTitle?: string
   spreadsheetUrl?: string
 }
 
-export type GoogleSpreadsheetChoice = {
-  id: string
-  name: string
-  modifiedTime: string
-  webViewLink: string
-}
+const googleSheetsAppsScriptUrl=import.meta.env.VITE_GOOGLE_SHEETS_APPS_SCRIPT_URL
 
-export async function beginGoogleSheetsConnection(formId:string){
-  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
-  const result=await httpsCallable<{formId:string},{authorizationUrl:string}>(functions,'beginGoogleSheetsConnection')({formId})
-  return result.data.authorizationUrl
-}
-
-export async function getGoogleSheetsConnection(formId:string):Promise<GoogleSheetsConnectionStatus>{
-  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
-  const result=await httpsCallable<{formId:string},GoogleSheetsConnectionStatus>(functions,'getGoogleSheetsConnection')({formId})
+async function requestGoogleSheetsAppsScript(
+  action:'status'|'connect'|'disconnect',
+  formId:string,
+):Promise<GoogleSheetsConnectionStatus>{
+  if(!googleSheetsAppsScriptUrl)throw Object.assign(
+    new Error('Google 스프레드시트 운영 설정이 필요합니다.'),
+    {code:'apps-script/not-configured'},
+  )
+  const user=auth?.currentUser
+  if(!user)throw Object.assign(new Error('제작자 로그인이 필요합니다.'),{code:'apps-script/unauthenticated'})
+  const response=await fetch(googleSheetsAppsScriptUrl,{
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({action,formId,idToken:await user.getIdToken()}),
+  })
+  if(!response.ok)throw Object.assign(new Error(`Apps Script HTTP ${response.status}`),{code:'apps-script/unavailable'})
+  const result=await response.json() as {
+    ok?:boolean
+    data?:GoogleSheetsConnectionStatus
+    error?:string
+    code?:string
+  }
+  if(!result.ok||!result.data)throw Object.assign(
+    new Error(result.error||'Google 스프레드시트 연결 요청에 실패했습니다.'),
+    {code:result.code||'apps-script/failed'},
+  )
   return result.data
 }
 
-export async function listAvailableGoogleSpreadsheets(formId:string):Promise<GoogleSpreadsheetChoice[]>{
-  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
-  const result=await httpsCallable<{formId:string},{items:GoogleSpreadsheetChoice[]}>(functions,'listAvailableGoogleSpreadsheets')({formId})
-  return result.data.items
+export function googleSheetsAppsScriptConfigured(){
+  return Boolean(googleSheetsAppsScriptUrl)
 }
 
-export async function selectGoogleSpreadsheet(formId:string,spreadsheetId:string):Promise<GoogleSheetsConnectionStatus>{
-  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
-  const result=await httpsCallable<{formId:string;spreadsheetId:string},GoogleSheetsConnectionStatus>(functions,'selectGoogleSpreadsheet')({formId,spreadsheetId})
-  return result.data
+export function getGoogleSheetsConnection(formId:string){
+  return requestGoogleSheetsAppsScript('status',formId)
 }
 
-export async function createAndConnectGoogleSpreadsheet(formId:string):Promise<GoogleSheetsConnectionStatus>{
-  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
-  const result=await httpsCallable<{formId:string},GoogleSheetsConnectionStatus>(functions,'createAndConnectGoogleSpreadsheet')({formId})
-  return result.data
+export function createAndConnectGoogleSpreadsheet(formId:string){
+  return requestGoogleSheetsAppsScript('connect',formId)
 }
 
-export async function disconnectGoogleSheets(formId:string){
-  if(!functions)throw new Error('Firebase Functions가 설정되지 않았습니다.')
-  await httpsCallable<{formId:string},{status:'disconnected'}>(functions,'disconnectGoogleSheets')({formId})
+export function disconnectGoogleSheets(formId:string){
+  return requestGoogleSheetsAppsScript('disconnect',formId)
 }
 
 export async function getFormDeliveryStatus(formId: string): Promise<Array<{

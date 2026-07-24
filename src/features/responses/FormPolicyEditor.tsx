@@ -156,12 +156,11 @@ export function FormPolicyEditor({
     </section>
     <section>
       <h3><Settings2/> 외부 연동 <span className="optional-badge">선택</span></h3>
-      <p className="section-help">구글 계정을 연결하면 새 응답이 선택한 스프레드시트에 자동으로 추가됩니다.</p>
+      <p className="section-help">버튼 한 번으로 응답용 스프레드시트를 만들고 자동 저장할 수 있습니다.</p>
       <GoogleSheetsConnector formId={value.integrations.formId}/>
       <details className="advanced-webhook-settings">
         <summary>개발자용 웹훅 설정</summary>
         <p className="section-help">별도 서버 연동이 필요한 경우에만 사용하세요.</p>
-        <label>Apps Script 웹앱 URL<input type="url" value={value.integrations.sheetsWebhookUrl ?? ''} onChange={(event) => updateIntegrations({ sheetsWebhookUrl: event.target.value })} placeholder="https://script.google.com/macros/s/.../exec"/></label>
         <label>일반 웹훅 URL<input type="url" value={value.integrations.webhookUrl ?? ''} onChange={(event) => updateIntegrations({ webhookUrl: event.target.value })} placeholder="https://example.com/hooks/daepul"/></label>
         <small>새 응답을 HTTPS POST로 전달합니다. 전송 상태와 실패 사유는 서버 기록에 보관됩니다.</small>
       </details>

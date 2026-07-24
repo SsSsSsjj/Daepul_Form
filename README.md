@@ -90,22 +90,12 @@ firebase deploy
 
 ### Google 스프레드시트 자동 저장
 
-운영자는 Google Cloud Console에서 Google Sheets API와 Google Drive API를 활성화하고 OAuth 2.0 웹 클라이언트를 만듭니다. 승인된 리디렉션 URI에는 배포될 `googleSheetsOAuthCallback` 함수 URL을 등록합니다.
+Firebase Blaze 요금제나 Cloud Functions 없이 운영 계정의 Apps Script를 사용합니다.
+최초 설정 방법은 [`apps-script/README.md`](apps-script/README.md)를 참고하세요.
 
-```dotenv
-# functions/.env.<project-id>
-GOOGLE_SHEETS_CLIENT_ID=your-google-oauth-web-client-id
-GOOGLE_SHEETS_REDIRECT_URI=https://asia-northeast3-your-project.cloudfunctions.net/googleSheetsOAuthCallback
-```
-
-클라이언트 보안 비밀번호는 파일에 저장하지 않고 Secret Manager에 등록합니다.
-
-```bash
-firebase functions:secrets:set GOOGLE_SHEETS_CLIENT_SECRET
-firebase deploy --only functions
-```
-
-배포 후 사용자는 폼을 먼저 저장한 다음 `Google 스프레드시트 연결` 버튼에서 권한을 승인하고 기존 시트를 선택하거나 새 시트를 만들 수 있습니다. 새 응답은 선택한 문서의 `대플폼 응답` 탭에 자동 추가됩니다.
+운영 설정이 끝나면 폼 제작자는 `응답 시트 만들고 연결` 버튼만 누르면 됩니다.
+운영 계정이 응답용 스프레드시트를 생성해 제작자 이메일에 편집 권한으로 공유하고,
+새 응답은 약 1분 간격으로 `대플폼 응답` 탭에 자동 추가됩니다.
 
 ## 📁 폴더 구조
 
