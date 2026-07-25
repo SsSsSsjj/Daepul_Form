@@ -21,6 +21,7 @@ import {
   type AiGeneratedQuestion,
 } from './features/forms/normalizeGeneratedQuestions'
 import { createFormService } from './formService'
+import { resolvePublicFormReference } from './features/forms/publicFormLookup'
 import { queryResponses } from './features/responses/model'
 import { submissionErrorMessage } from './features/responses/submissionError'
 
@@ -346,17 +347,22 @@ export async function hasSubmittedResponse(formId: string, userUid: string) {
 
 export async function getPublishedForm(formId: string, includePrivate = false) {
   if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
-  let snapshot = await getDoc(doc(db, 'forms', formId))
-  if (!snapshot.exists() && !includePrivate) {
-    const slugMatches = await getDocs(query(
-      collection(db, 'forms'),
-      where('settings.publicSlug', '==', formId),
-      where('published', '==', true),
-      limit(1),
-    ))
-    if (!slugMatches.empty) snapshot = slugMatches.docs[0]
-  }
-  if (!snapshot.exists() || (!includePrivate && snapshot.data().published !== true)) throw new Error('published-form-not-found')
+  const snapshot = await resolvePublicFormReference(formId, includePrivate, {
+    findPublishedBySlug: async (slug) => {
+      const matches = await getDocs(query(
+        collection(db, 'forms'),
+        where('settings.publicSlug', '==', slug),
+        where('published', '==', true),
+        limit(1),
+      ))
+      return matches.docs[0] ?? null
+    },
+    getById: async (id) => {
+      const match = await getDoc(doc(db, 'forms', id))
+      return match.exists() ? match : null
+    },
+  })
+  if (!snapshot || (!includePrivate && snapshot.data().published !== true)) throw new Error('published-form-not-found')
   const data = snapshot.data()
   return {
     id: snapshot.id,
