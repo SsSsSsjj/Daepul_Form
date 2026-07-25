@@ -33,16 +33,18 @@ describe('public response model', () => {
     expect(validateAnswers(questions, { 1: '홍길동', 2: 4 })).toEqual({})
   })
 
-  it('returns field-level email and Korean mobile phone format errors', () => {
+  it('returns field-level email, Korean mobile phone, and date format errors', () => {
     const formattedQuestions: FormQuestion[] = [
       { id: 10, label: '이메일', type: 'short_text', required: true, inputFormat: 'email' },
       { id: 11, label: '전화번호', type: 'short_text', required: true, inputFormat: 'phone' },
+      { id: 12, label: '생년월일', type: 'short_text', required: true, inputFormat: 'date' },
     ]
-    expect(validateAnswers(formattedQuestions, { 10: 'wrong', 11: '01012345678' })).toEqual({
+    expect(validateAnswers(formattedQuestions, { 10: 'wrong', 11: '01012345678', 12: '2000-02-30' })).toEqual({
       10: '이메일 형식에 맞게 입력해 주세요. 예: name@example.com',
       11: '전화번호 형식에 맞게 입력해 주세요. 예: 010-0000-0000',
+      12: '날짜 형식에 맞게 입력해 주세요. 예: YYYY-MM-DD',
     })
-    expect(validateAnswers(formattedQuestions, { 10: 'student@kangnam.ac.kr', 11: '010-1234-5678' })).toEqual({})
+    expect(validateAnswers(formattedQuestions, { 10: 'student@kangnam.ac.kr', 11: '010-1234-5678', 12: '2000-02-29' })).toEqual({})
   })
 
   it('limits the number of checkbox selections', () => {
