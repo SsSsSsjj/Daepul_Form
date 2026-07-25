@@ -157,618 +157,2230 @@ function analyzeStoredResponses(questions: FormQuestion[], responses: StoredForm
 }
 
 export default function App() {
-  const initialDraft = useMemo(getCreatorDraft, [])
-  const requestedFormId = useMemo(() => new URLSearchParams(location.search).get('form'), [])
-  const requestedPreview = useMemo(() => new URLSearchParams(location.search).get('preview') === '1', [])
-  const requestedPublicResults = useMemo(() => new URLSearchParams(location.search).get('results') === '1', [])
-  const [user, setUser] = useState<FirebaseUser | null>(null)
-  const [authReady, setAuthReady] = useState(false)
-  const [authError, setAuthError] = useState('')
-  const [guestSignInStatus, setGuestSignInStatus] = useState<'idle' | 'loading' | 'done'>('idle')
-  const [loginProvider, setLoginProvider] = useState<LoginProvider | null>(null)
-  const [emailLinkMode, setEmailLinkMode] = useState<EmailLinkMode>(() => hasEmailSignInLink() ? 'checking' : 'none')
-  const [page, setPage] = useState<Page>('create')
-  const [resultsReturnPage, setResultsReturnPage] = useState<Exclude<Page, 'results'>>('publish')
-  const [creationMode, setCreationMode] = useState<CreationMode>('ai')
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [files, setFiles] = useState<File[]>([])
-  const [memo, setMemo] = useState(initialDraft.memo ?? '')
-  const [dragging, setDragging] = useState(false)
-  const [analysisLoading, setAnalysisLoading] = useState(false)
-  const [analysisError, setAnalysisError] = useState('')
-  const [reviewNotes, setReviewNotes] = useState<string[]>([])
-  const [program, setProgram] = useState<ProgramInfo>(initialDraft.program ?? emptyProgram)
-  const [questions, setQuestions] = useState<FormQuestion[]>(initialDraft.questions ?? [])
-  const [draggedQuestionId, setDraggedQuestionId] = useState<number | null>(null)
-  const [dragOverQuestionId, setDragOverQuestionId] = useState<number | null>(null)
-  const [reorderAnnouncement, setReorderAnnouncement] = useState('')
-  const [formType, setFormType] = useState<FormType>(initialDraft.formType ?? 'general')
-  const [theme, setTheme] = useState<Theme>(normalizeSelectableTheme(String(initialDraft.theme ?? 'green')))
-  const [formId, setFormId] = useState(newFormId)
-  const [endDate, setEndDate] = useState(initialDraft.endDate ?? '2026-07-31')
-  const [formSettings, setFormSettings] = useState<FormSettings>(normalizeFormSettings(initialDraft.settings ?? defaultFormSettings))
-  const [published, setPublished] = useState(false)
-  const [publishLoading, setPublishLoading] = useState(false)
-  const [message, setMessage] = useState('')
-  const [responses, setResponses] = useState<StoredFormResponse[]>([])
-  const [responsePage, setResponsePage] = useState<ResponsePage>()
-  const [sampleResults, setSampleResults] = useState(false)
-  const [resultLoading, setResultLoading] = useState(false)
-  const [ownedForms, setOwnedForms] = useState<OwnedForm[]>([])
-  const [deletedForms, setDeletedForms] = useState<DeletedForm[]>([])
-  const [deletingFormId, setDeletingFormId] = useState('')
-  const [emptyingTrash, setEmptyingTrash] = useState(false)
-  const [shareFormId, setShareFormId] = useState('')
-  const [manageQr, setManageQr] = useState('')
-  const [copiedFormId, setCopiedFormId] = useState('')
-  const [publishedQrCopied, setPublishedQrCopied] = useState(false)
-  const [copiedManageQrFormId, setCopiedManageQrFormId] = useState('')
-  const [versionHistory, setVersionHistory] = useState<Array<{version:number;createdAt:string;questionCount:number;title:string}>>([])
-  const [versionHistoryTitle, setVersionHistoryTitle] = useState('')
+  const initialDraft = useMemo(getCreatorDraft, []);
+  const requestedFormId = useMemo(
+    () => new URLSearchParams(location.search).get("form"),
+    [],
+  );
+  const requestedPreview = useMemo(
+    () => new URLSearchParams(location.search).get("preview") === "1",
+    [],
+  );
+  const requestedPublicResults = useMemo(
+    () => new URLSearchParams(location.search).get("results") === "1",
+    [],
+  );
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [guestSignInStatus, setGuestSignInStatus] = useState<
+    "idle" | "loading" | "done"
+  >("idle");
+  const [loginProvider, setLoginProvider] = useState<LoginProvider | null>(
+    null,
+  );
+  const [emailLinkMode, setEmailLinkMode] = useState<EmailLinkMode>(() =>
+    hasEmailSignInLink() ? "checking" : "none",
+  );
+  const [page, setPage] = useState<Page>("create");
+  const [resultsReturnPage, setResultsReturnPage] =
+    useState<Exclude<Page, "results">>("publish");
+  const [creationMode, setCreationMode] = useState<CreationMode>("ai");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [memo, setMemo] = useState(initialDraft.memo ?? "");
+  const [dragging, setDragging] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
+  const [reviewNotes, setReviewNotes] = useState<string[]>([]);
+  const [program, setProgram] = useState<ProgramInfo>(
+    initialDraft.program ?? emptyProgram,
+  );
+  const [questions, setQuestions] = useState<FormQuestion[]>(
+    initialDraft.questions ?? [],
+  );
+  const [draggedQuestionId, setDraggedQuestionId] = useState<number | null>(
+    null,
+  );
+  const [dragOverQuestionId, setDragOverQuestionId] = useState<number | null>(
+    null,
+  );
+  const [reorderAnnouncement, setReorderAnnouncement] = useState("");
+  const [formType, setFormType] = useState<FormType>(
+    initialDraft.formType ?? "general",
+  );
+  const [theme, setTheme] = useState<Theme>(
+    normalizeSelectableTheme(String(initialDraft.theme ?? "green")),
+  );
+  const [formId, setFormId] = useState(newFormId);
+  const [endDate, setEndDate] = useState(initialDraft.endDate ?? "2026-07-31");
+  const [formSettings, setFormSettings] = useState<FormSettings>(
+    normalizeFormSettings(initialDraft.settings ?? defaultFormSettings),
+  );
+  const [published, setPublished] = useState(false);
+  const [publishLoading, setPublishLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [responses, setResponses] = useState<StoredFormResponse[]>([]);
+  const [responsePage, setResponsePage] = useState<ResponsePage>();
+  const [sampleResults, setSampleResults] = useState(false);
+  const [resultLoading, setResultLoading] = useState(false);
+  const [ownedForms, setOwnedForms] = useState<OwnedForm[]>([]);
+  const [deletedForms, setDeletedForms] = useState<DeletedForm[]>([]);
+  const [deletingFormId, setDeletingFormId] = useState("");
+  const [emptyingTrash, setEmptyingTrash] = useState(false);
+  const [shareFormId, setShareFormId] = useState("");
+  const [manageQr, setManageQr] = useState("");
+  const [copiedFormId, setCopiedFormId] = useState("");
+  const [publishedQrCopied, setPublishedQrCopied] = useState(false);
+  const [copiedManageQrFormId, setCopiedManageQrFormId] = useState("");
+  const [versionHistory, setVersionHistory] = useState<
+    Array<{
+      version: number;
+      createdAt: string;
+      questionCount: number;
+      title: string;
+    }>
+  >([]);
+  const [versionHistoryTitle, setVersionHistoryTitle] = useState("");
 
   useEffect(() => {
     const onPopState = (event: PopStateEvent) => {
-      const target = event.state?.daepulPage
-      if (creatorPages.includes(target)) setPage(target)
-    }
-    window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
-  }, [])
+      const target = event.state?.daepulPage;
+      if (creatorPages.includes(target)) setPage(target);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => {
-    if (history.state?.daepulPage === page) return
+    if (history.state?.daepulPage === page) return;
     if (!creatorPages.includes(history.state?.daepulPage)) {
-      history.replaceState({ ...history.state, daepulPage: page }, document.title)
-      return
+      history.replaceState(
+        { ...history.state, daepulPage: page },
+        document.title,
+      );
+      return;
     }
-    history.pushState({ ...history.state, daepulPage: page }, document.title)
-  }, [page])
+    history.pushState({ ...history.state, daepulPage: page }, document.title);
+  }, [page]);
 
   const showCopiedFeedback = (setCopied: (value: boolean) => void) => {
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1600)
-  }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  };
 
   const copyPublishedQr = async () => {
-    if (!qr) return
+    if (!qr) return;
     try {
-      await copyQrImage(qr)
-      showCopiedFeedback(setPublishedQrCopied)
+      await copyQrImage(qr);
+      showCopiedFeedback(setPublishedQrCopied);
     } catch {
-      setMessage('QR 이미지를 복사하지 못했습니다. PNG 저장을 이용해 주세요.')
+      setMessage("QR 이미지를 복사하지 못했습니다. PNG 저장을 이용해 주세요.");
     }
-  }
+  };
 
   const copyManageQr = async (targetFormId: string) => {
-    if (!manageQr) return
+    if (!manageQr) return;
     try {
-      await copyQrImage(manageQr)
-      setCopiedManageQrFormId(targetFormId)
-      window.setTimeout(() => setCopiedManageQrFormId((current) => current === targetFormId ? '' : current), 1600)
+      await copyQrImage(manageQr);
+      setCopiedManageQrFormId(targetFormId);
+      window.setTimeout(
+        () =>
+          setCopiedManageQrFormId((current) =>
+            current === targetFormId ? "" : current,
+          ),
+        1600,
+      );
     } catch {
-      setMessage('QR 이미지를 복사하지 못했습니다. QR 저장을 이용해 주세요.')
+      setMessage("QR 이미지를 복사하지 못했습니다. QR 저장을 이용해 주세요.");
     }
-  }
-  const [publicFormLoaded, setPublicFormLoaded] = useState(false)
-  const [qr, setQr] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
-  const emailLinkHandled = useRef(false)
+  };
+  const [publicFormLoaded, setPublicFormLoaded] = useState(false);
+  const [qr, setQr] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const emailLinkHandled = useRef(false);
 
-  const shareLink = `${location.origin}/?form=${encodeURIComponent(formSettings.publicSlug || formId)}`
-  const previewLink = `${shareLink}&preview=1`
-  const summaries = useMemo(() => responsePage?.summaries ?? analyzeStoredResponses(questions, responses), [questions, responses, responsePage])
+  const shareLink = `${location.origin}/?form=${encodeURIComponent(formSettings.publicSlug || formId)}`;
+  const previewLink = `${shareLink}&preview=1`;
+  const summaries = useMemo(
+    () =>
+      responsePage?.summaries ?? analyzeStoredResponses(questions, responses),
+    [questions, responses, responsePage],
+  );
 
-  useEffect(() => observeAuthState((nextUser) => { setUser(nextUser); setAuthReady(true) }), [])
+  useEffect(
+    () =>
+      observeAuthState((nextUser) => {
+        setUser(nextUser);
+        setAuthReady(true);
+      }),
+    [],
+  );
   useEffect(() => {
-    if (!authReady || !requestedFormId || user || guestSignInStatus !== 'idle' || emailLinkMode !== 'none') return
-    setGuestSignInStatus('loading')
+    if (
+      !authReady ||
+      !requestedFormId ||
+      user ||
+      guestSignInStatus !== "idle" ||
+      emailLinkMode !== "none"
+    )
+      return;
+    setGuestSignInStatus("loading");
     void signInAsGuest()
       .then(setUser)
-      .catch(() => setAuthError('비로그인 참여 세션을 시작하지 못했습니다. 잠시 후 다시 시도하거나 로그인해 주세요.'))
-      .finally(() => setGuestSignInStatus('done'))
-  }, [authReady, emailLinkMode, guestSignInStatus, requestedFormId, user])
+      .catch(() =>
+        setAuthError(
+          "비로그인 참여 세션을 시작하지 못했습니다. 잠시 후 다시 시도하거나 로그인해 주세요.",
+        ),
+      )
+      .finally(() => setGuestSignInStatus("done"));
+  }, [authReady, emailLinkMode, guestSignInStatus, requestedFormId, user]);
   useEffect(() => {
-    if (requestedFormId) return
+    if (requestedFormId) return;
     try {
-      localStorage.setItem(draftStorageKey, JSON.stringify({ memo, program, questions, formType, theme, endDate, settings: formSettings } satisfies CreatorDraft))
+      localStorage.setItem(
+        draftStorageKey,
+        JSON.stringify({
+          memo,
+          program,
+          questions,
+          formType,
+          theme,
+          endDate,
+          settings: formSettings,
+        } satisfies CreatorDraft),
+      );
     } catch {
       // Keep editing available even when browser storage is blocked or full.
     }
-  }, [memo, program, questions, formType, theme, endDate, formSettings, requestedFormId])
+  }, [
+    memo,
+    program,
+    questions,
+    formType,
+    theme,
+    endDate,
+    formSettings,
+    requestedFormId,
+  ]);
   useEffect(() => {
-    if (emailLinkMode !== 'checking' || emailLinkHandled.current) return
-    emailLinkHandled.current = true
-    const savedEmail = getPendingEmailAddress()
+    if (emailLinkMode !== "checking" || emailLinkHandled.current) return;
+    emailLinkHandled.current = true;
+    const savedEmail = getPendingEmailAddress();
     if (!savedEmail) {
-      setEmailLinkMode('needs-email')
-      return
+      setEmailLinkMode("needs-email");
+      return;
     }
 
-    setLoginProvider('email')
-    void completeEmailSignIn(savedEmail).then((signedInUser) => {
-      setUser(signedInUser)
-      setEmailLinkMode('none')
-    }).catch((error) => {
-      setAuthError(loginFailureMessage(error, 'email'))
-      setEmailLinkMode('needs-email')
-    }).finally(() => setLoginProvider(null))
-  }, [emailLinkMode])
+    setLoginProvider("email");
+    void completeEmailSignIn(savedEmail)
+      .then((signedInUser) => {
+        setUser(signedInUser);
+        setEmailLinkMode("none");
+      })
+      .catch((error) => {
+        setAuthError(loginFailureMessage(error, "email"));
+        setEmailLinkMode("needs-email");
+      })
+      .finally(() => setLoginProvider(null));
+  }, [emailLinkMode]);
   useEffect(() => {
-    if (!user || !requestedFormId || publicFormLoaded) return
-    void getPublishedForm(requestedFormId).then((form) => {
-      setProgram(form.program); setQuestions(form.questions); setFormType(form.formType); setTheme(normalizeTheme(form.theme)); setEndDate(form.surveyEndDate); setFormSettings(normalizeFormSettings(form.settings)); setFormId(form.id); setPublicFormLoaded(true)
-    }).catch(() => setAuthError('공개된 폼을 불러오지 못했습니다. 링크와 공개 상태를 확인해 주세요.'))
-  }, [user, requestedFormId, publicFormLoaded])
-  useEffect(() => { if (published) void QRCode.toDataURL(shareLink, { width: 240, margin: 2 }).then(setQr) }, [published, shareLink])
+    if (!user || !requestedFormId || publicFormLoaded) return;
+    void getPublishedForm(requestedFormId)
+      .then((form) => {
+        setProgram(form.program);
+        setQuestions(form.questions);
+        setFormType(form.formType);
+        setTheme(normalizeTheme(form.theme));
+        setEndDate(form.surveyEndDate);
+        setFormSettings(normalizeFormSettings(form.settings));
+        setFormId(form.id);
+        setPublicFormLoaded(true);
+      })
+      .catch(() =>
+        setAuthError(
+          "공개된 폼을 불러오지 못했습니다. 링크와 공개 상태를 확인해 주세요.",
+        ),
+      );
+  }, [user, requestedFormId, publicFormLoaded]);
   useEffect(() => {
-    if (!requestedFormId || !publicFormLoaded) return
-    document.title = formSettings.branding.shareTitle || program.programName || '대플폼'
+    if (published)
+      void QRCode.toDataURL(shareLink, { width: 240, margin: 2 }).then(setQr);
+  }, [published, shareLink]);
+  useEffect(() => {
+    if (!requestedFormId || !publicFormLoaded) return;
+    document.title =
+      formSettings.branding.shareTitle || program.programName || "대플폼";
     const metadata: Record<string, string | undefined> = {
-      description: formSettings.branding.shareDescription || program.description,
-      'og:title': formSettings.branding.shareTitle || program.programName,
-      'og:description': formSettings.branding.shareDescription || program.description,
-      'og:image': formSettings.branding.shareImageUrl,
-    }
+      description:
+        formSettings.branding.shareDescription || program.description,
+      "og:title": formSettings.branding.shareTitle || program.programName,
+      "og:description":
+        formSettings.branding.shareDescription || program.description,
+      "og:image": formSettings.branding.shareImageUrl,
+    };
     Object.entries(metadata).forEach(([name, content]) => {
-      if (!content) return
-      const property = name.startsWith('og:') ? 'property' : 'name'
-      let element = document.head.querySelector<HTMLMetaElement>(`meta[${property}="${name}"]`)
-      if (!element) { element = document.createElement('meta'); element.setAttribute(property, name); document.head.append(element) }
-      element.content = content
-    })
-  }, [formSettings.branding, program.description, program.programName, publicFormLoaded, requestedFormId])
+      if (!content) return;
+      const property = name.startsWith("og:") ? "property" : "name";
+      let element = document.head.querySelector<HTMLMetaElement>(
+        `meta[${property}="${name}"]`,
+      );
+      if (!element) {
+        element = document.createElement("meta");
+        element.setAttribute(property, name);
+        document.head.append(element);
+      }
+      element.content = content;
+    });
+  }, [
+    formSettings.branding,
+    program.description,
+    program.programName,
+    publicFormLoaded,
+    requestedFormId,
+  ]);
 
-  const login = async (provider: LoginProvider, email = '') => {
-    setLoginProvider(provider); setAuthError('')
+  const login = async (provider: LoginProvider, email = "") => {
+    setLoginProvider(provider);
+    setAuthError("");
     try {
-      if (provider === 'google') await signInWithGoogle()
-      else if (emailLinkMode === 'needs-email') {
-        const signedInUser = await completeEmailSignIn(email)
-        setUser(signedInUser)
-        setEmailLinkMode('none')
-      } else await requestEmailSignInLink(email)
-      return true
+      if (provider === "google") await signInWithGoogle();
+      else if (emailLinkMode === "needs-email") {
+        const signedInUser = await completeEmailSignIn(email);
+        setUser(signedInUser);
+        setEmailLinkMode("none");
+      } else await requestEmailSignInLink(email);
+      return true;
     } catch (error) {
-      setAuthError(loginFailureMessage(error, provider))
-      return false
+      setAuthError(loginFailureMessage(error, provider));
+      return false;
     } finally {
-      setLoginProvider(null)
+      setLoginProvider(null);
     }
-  }
+  };
   const startNewEmailLink = () => {
-    discardEmailSignInLink()
-    setEmailLinkMode('none')
-    setAuthError('')
-  }
+    discardEmailSignInLink();
+    setEmailLinkMode("none");
+    setAuthError("");
+  };
   const startNewForm = () => {
-    setMenuOpen(false)
-    setFiles([])
-    setMemo('')
-    setAnalysisError('')
-    setReviewNotes([])
-    setProgram(emptyProgram)
-    setQuestions([])
-    setFormType('general')
-    setTheme('green')
-    setFormId(newFormId())
-    setEndDate('2026-07-31')
-    setFormSettings(normalizeFormSettings(defaultFormSettings))
-    setPublished(false)
-    setPublishLoading(false)
-    setMessage('')
-    setResponses([])
-    setResponsePage(undefined)
-    setSampleResults(false)
-    setQr('')
-    setCreationMode('ai')
-    setPage('create')
-  }
+    setMenuOpen(false);
+    setFiles([]);
+    setMemo("");
+    setAnalysisError("");
+    setReviewNotes([]);
+    setProgram(emptyProgram);
+    setQuestions([]);
+    setFormType("general");
+    setTheme("green");
+    setFormId(newFormId());
+    setEndDate("2026-07-31");
+    setFormSettings(normalizeFormSettings(defaultFormSettings));
+    setPublished(false);
+    setPublishLoading(false);
+    setMessage("");
+    setResponses([]);
+    setResponsePage(undefined);
+    setSampleResults(false);
+    setQr("");
+    setCreationMode("ai");
+    setPage("create");
+  };
   const startManualForm = () => {
-    startNewForm()
-    setCreationMode('manual')
-    setQuestions([{ id: Date.now(), label: '', type: 'short_text', required: false }])
-    setPage('edit')
-  }
-  const doLogout = async () => { await logout(); setUser(null); setMenuOpen(false); setPage('create') }
+    startNewForm();
+    setCreationMode("manual");
+    setQuestions([
+      { id: Date.now(), label: "", type: "short_text", required: false },
+    ]);
+    setPage("edit");
+  };
+  const doLogout = async () => {
+    await logout();
+    setUser(null);
+    setMenuOpen(false);
+    setPage("create");
+  };
   const addFiles = (incoming: File[]) => {
-    const supportedExtensions = ['.pdf', '.png', '.jpg', '.jpeg', '.hwp', '.hwpx']
-    const valid = incoming.filter((file) => supportedExtensions.some((extension) => file.name.toLowerCase().endsWith(extension)))
-    if (valid.length !== incoming.length) setAnalysisError('PDF, PNG, JPG, HWP, HWPX 파일만 지원합니다.')
-    setFiles((current) => [...current, ...valid].slice(0, 5))
-  }
-  const onFiles = (event: ChangeEvent<HTMLInputElement>) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = '' }
-  const onDrop = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); setDragging(false); addFiles(Array.from(event.dataTransfer.files)) }
+    const supportedExtensions = [
+      ".pdf",
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".hwp",
+      ".hwpx",
+    ];
+    const valid = incoming.filter((file) =>
+      supportedExtensions.some((extension) =>
+        file.name.toLowerCase().endsWith(extension),
+      ),
+    );
+    if (valid.length !== incoming.length)
+      setAnalysisError("PDF, PNG, JPG, HWP, HWPX 파일만 지원합니다.");
+    setFiles((current) => [...current, ...valid].slice(0, 5));
+  };
+  const onFiles = (event: ChangeEvent<HTMLInputElement>) => {
+    addFiles(Array.from(event.target.files ?? []));
+    event.target.value = "";
+  };
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragging(false);
+    addFiles(Array.from(event.dataTransfer.files));
+  };
   const analyze = async () => {
-    if (!files.length && !memo.trim()) { setAnalysisError('참고문서를 첨부하거나 담당자 메모를 입력해 주세요.'); return }
-    setAnalysisLoading(true); setAnalysisError('')
+    if (!files.length && !memo.trim()) {
+      setAnalysisError("참고문서를 첨부하거나 담당자 메모를 입력해 주세요.");
+      return;
+    }
+    setAnalysisLoading(true);
+    setAnalysisError("");
     try {
-      const generated = await generateFormFromDocuments(files, memo)
-      setProgram(generated.program)
-      setQuestions(generated.questions)
-      setFormType(generated.formType)
-      setReviewNotes(generated.reviewNotes)
-      setTheme(normalizeSelectableTheme(generated.suggestedTheme))
-      setFormSettings(settingsFromAiSuggestion(generated.suggestedSettings))
-      if (/^\d{4}-\d{2}-\d{2}$/.test(generated.suggestedEndDate)) setEndDate(generated.suggestedEndDate)
-      setCreationMode('ai')
-      setPage('edit')
+      const generated = await generateFormFromDocuments(files, memo);
+      setProgram(generated.program);
+      setQuestions(generated.questions);
+      setFormType(generated.formType);
+      setReviewNotes(generated.reviewNotes);
+      setTheme(normalizeSelectableTheme(generated.suggestedTheme));
+      setFormSettings(settingsFromAiSuggestion(generated.suggestedSettings));
+      if (/^\d{4}-\d{2}-\d{2}$/.test(generated.suggestedEndDate))
+        setEndDate(generated.suggestedEndDate);
+      setCreationMode("ai");
+      setPage("edit");
     } catch (error) {
-      console.error(error)
-      setAnalysisError(aiFailureMessage(error))
-    } finally { setAnalysisLoading(false) }
-  }
+      console.error(error);
+      setAnalysisError(aiFailureMessage(error));
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
   const publish = async () => {
-    if (!user) return
-    if (!program.programName || !questions.length) { setMessage('폼 제목과 질문을 확인해 주세요.'); return }
-    const unnamedQuestionIndex=questions.findIndex(question=>!editableQuestionLabel(question.label).trim())
-    if(unnamedQuestionIndex>=0){setMessage(`${unnamedQuestionIndex+1}번 질문 내용을 입력해 주세요.`);return}
-    const invalidChoiceQuestion=questions.find(question=>(question.type==='select'||question.type==='checkbox')&&new Set((question.options??[]).map(option=>editableOptionLabel(option).trim()).filter(Boolean)).size<2)
-    if(invalidChoiceQuestion){setMessage(`"${invalidChoiceQuestion.label}" 질문에 서로 다른 선택지를 2개 이상 입력해 주세요.`);return}
-    const duplicateChoiceQuestion=questions.find(question=>{
-      if(question.type!=='select'&&question.type!=='checkbox')return false
-      const values=(question.options??[]).map(option=>editableOptionLabel(option).trim().toLocaleLowerCase('ko')).filter(Boolean)
-      return new Set(values).size!==values.length
-    })
-    if(duplicateChoiceQuestion){setMessage(`"${duplicateChoiceQuestion.label}" 질문의 중복 선택지를 수정해 주세요.`);return}
-    if(formSettings.quiz.enabled&&!questions.some(question=>(question.points??0)>0&&(question.correctAnswers?.length??0)>0)){setMessage('퀴즈 모드에는 정답과 1점 이상의 배점이 설정된 문항이 필요합니다. 폼 수정 화면에서 설정해 주세요.');return}
-    if(formSettings.workspace.enabled&&(!formSettings.workspace.name.trim()||!formSettings.workspace.emailDomain.includes('.'))){setMessage('조직 공유 공간 이름과 올바른 이메일 도메인을 입력해 주세요.');return}
-    if(formSettings.branding.fontPreset==='custom'&&(!formSettings.branding.customFontFamily||!formSettings.branding.customFontUrl?.startsWith('https://'))){setMessage('사용자 글꼴 이름과 HTTPS CSS 주소를 입력해 주세요.');return}
-    if (!window.confirm(`${published ? '변경한 설정으로 다시 배포할까요?' : '이 폼을 실제로 배포할까요?'}\n\n배포하면 공개 링크가 활성화되어 응답을 받을 수 있습니다.`)) return
-    setPublishLoading(true); setMessage('')
+    if (!user) return;
+    if (!program.programName || !questions.length) {
+      setMessage("폼 제목과 질문을 확인해 주세요.");
+      return;
+    }
+    const unnamedQuestionIndex = questions.findIndex(
+      (question) => !editableQuestionLabel(question.label).trim(),
+    );
+    if (unnamedQuestionIndex >= 0) {
+      setMessage(`${unnamedQuestionIndex + 1}번 질문 내용을 입력해 주세요.`);
+      return;
+    }
+    const invalidChoiceQuestion = questions.find(
+      (question) =>
+        (question.type === "select" || question.type === "checkbox") &&
+        new Set(
+          (question.options ?? [])
+            .map((option) => editableOptionLabel(option).trim())
+            .filter(Boolean),
+        ).size < 2,
+    );
+    if (invalidChoiceQuestion) {
+      setMessage(
+        `"${invalidChoiceQuestion.label}" 질문에 서로 다른 선택지를 2개 이상 입력해 주세요.`,
+      );
+      return;
+    }
+    const duplicateChoiceQuestion = questions.find((question) => {
+      if (question.type !== "select" && question.type !== "checkbox")
+        return false;
+      const values = (question.options ?? [])
+        .map((option) =>
+          editableOptionLabel(option).trim().toLocaleLowerCase("ko"),
+        )
+        .filter(Boolean);
+      return new Set(values).size !== values.length;
+    });
+    if (duplicateChoiceQuestion) {
+      setMessage(
+        `"${duplicateChoiceQuestion.label}" 질문의 중복 선택지를 수정해 주세요.`,
+      );
+      return;
+    }
+    if (
+      formSettings.quiz.enabled &&
+      !questions.some(
+        (question) =>
+          (question.points ?? 0) > 0 &&
+          (question.correctAnswers?.length ?? 0) > 0,
+      )
+    ) {
+      setMessage(
+        "퀴즈 모드에는 정답과 1점 이상의 배점이 설정된 문항이 필요합니다. 폼 수정 화면에서 설정해 주세요.",
+      );
+      return;
+    }
+    if (
+      formSettings.workspace.enabled &&
+      (!formSettings.workspace.name.trim() ||
+        !formSettings.workspace.emailDomain.includes("."))
+    ) {
+      setMessage("조직 공유 공간 이름과 올바른 이메일 도메인을 입력해 주세요.");
+      return;
+    }
+    if (
+      formSettings.branding.fontPreset === "custom" &&
+      (!formSettings.branding.customFontFamily ||
+        !formSettings.branding.customFontUrl?.startsWith("https://"))
+    ) {
+      setMessage("사용자 글꼴 이름과 HTTPS CSS 주소를 입력해 주세요.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `${published ? "변경한 설정으로 다시 배포할까요?" : "이 폼을 실제로 배포할까요?"}\n\n배포하면 공개 링크가 활성화되어 응답을 받을 수 있습니다.`,
+      )
+    )
+      return;
+    setPublishLoading(true);
+    setMessage("");
     try {
       const publishedFormId = await publishFormRecord({
-        formId, owner: user, program, questions, formType, surveyEndDate: endDate, theme, settings: formSettings,
+        formId,
+        owner: user,
+        program,
+        questions,
+        formType,
+        surveyEndDate: endDate,
+        theme,
+        settings: formSettings,
         checkForExistingResponses: published,
-      })
-      const separatedFromExistingResponses = publishedFormId !== formId
-      setFormId(publishedFormId); setPublished(true); setFormSettings((current)=>({...current,integrations:{...current.integrations,formId:publishedFormId},version:separatedFromExistingResponses?1:published?current.version+1:1}))
-      setMessage(separatedFromExistingResponses
-        ? '기존 응답을 보호하기 위해 새 폼으로 분리했습니다. 아래의 새 공개 링크를 사용해 주세요.'
-        : '실제 공개 링크가 생성되었습니다. 이제 응답이 Firestore에 저장됩니다.')
+      });
+      const separatedFromExistingResponses = publishedFormId !== formId;
+      setFormId(publishedFormId);
+      setPublished(true);
+      setFormSettings((current) => ({
+        ...current,
+        integrations: { ...current.integrations, formId: publishedFormId },
+        version: separatedFromExistingResponses
+          ? 1
+          : published
+            ? current.version + 1
+            : 1,
+      }));
+      setMessage(
+        separatedFromExistingResponses
+          ? "기존 응답을 보호하기 위해 새 폼으로 분리했습니다. 아래의 새 공개 링크를 사용해 주세요."
+          : "실제 공개 링크가 생성되었습니다. 이제 응답이 Firestore에 저장됩니다.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error && error.message === "public-slug-in-use"
+          ? "이미 사용 중인 공개 주소입니다. 다른 주소를 입력해 주세요."
+          : "배포하지 못했습니다. 로그인과 Firestore 설정을 확인해 주세요.",
+      );
+    } finally {
+      setPublishLoading(false);
     }
-    catch (error) {
-      setMessage(error instanceof Error && error.message === 'public-slug-in-use'
-        ? '이미 사용 중인 공개 주소입니다. 다른 주소를 입력해 주세요.'
-        : '배포하지 못했습니다. 로그인과 Firestore 설정을 확인해 주세요.')
-    }
-    finally { setPublishLoading(false) }
-  }
+  };
   const loadResults = async (targetFormId = formId) => {
-    if (page !== 'results') setResultsReturnPage(page)
-    if (ownedForms.find((form)=>form.id===targetFormId)?.organizationShared) {
-      setMessage('조직 공유 폼은 공개 응답 화면에서 확인할 수 있습니다. 결과 접근은 소유자가 공동 편집 권한을 부여해야 합니다.')
-      return
+    if (page !== "results") setResultsReturnPage(page);
+    if (
+      ownedForms.find((form) => form.id === targetFormId)?.organizationShared
+    ) {
+      setMessage(
+        "조직 공유 폼은 공개 응답 화면에서 확인할 수 있습니다. 결과 접근은 소유자가 공동 편집 권한을 부여해야 합니다.",
+      );
+      return;
     }
-    setResultLoading(true); setMessage(''); setSampleResults(false)
+    setResultLoading(true);
+    setMessage("");
+    setSampleResults(false);
     try {
-      const form = targetFormId === formId ? { program, questions, formType, theme, surveyEndDate: endDate, settings: formSettings } : await getPublishedForm(targetFormId, true)
-      setFormId(targetFormId); setProgram(form.program); setQuestions(form.questions); setFormType(form.formType); setTheme(normalizeTheme(form.theme)); setEndDate(form.surveyEndDate); setFormSettings(normalizeFormSettings(form.settings))
+      const form =
+        targetFormId === formId
+          ? {
+              program,
+              questions,
+              formType,
+              theme,
+              surveyEndDate: endDate,
+              settings: formSettings,
+            }
+          : await getPublishedForm(targetFormId, true);
+      setFormId(targetFormId);
+      setProgram(form.program);
+      setQuestions(form.questions);
+      setFormType(form.formType);
+      setTheme(normalizeTheme(form.theme));
+      setEndDate(form.surveyEndDate);
+      setFormSettings(normalizeFormSettings(form.settings));
       const initialQuery: ResponseQuery = {
-        filters: { query: '', status: 'all', selectedIds: [] },
-        sortBy: 'submittedAt',
-        sortDirection: 'desc',
+        filters: { query: "", status: "all", selectedIds: [] },
+        sortBy: "submittedAt",
+        sortDirection: "desc",
         page: 1,
         pageSize: 25,
-      }
-      const result = await queryFormResponses(targetFormId, initialQuery)
-      setResponses(result.items); setResponsePage(result); setPage('results')
-    } catch { setMessage('응답을 불러오지 못했습니다. 폼 제작자 계정인지 확인해 주세요.') }
-    finally { setResultLoading(false) }
-  }
+      };
+      const result = await queryFormResponses(targetFormId, initialQuery);
+      setResponses(result.items);
+      setResponsePage(result);
+      setPage("results");
+    } catch {
+      setMessage(
+        "응답을 불러오지 못했습니다. 폼 제작자 계정인지 확인해 주세요.",
+      );
+    } finally {
+      setResultLoading(false);
+    }
+  };
   const openManage = async () => {
-    if (!user) return
-    setMenuOpen(false); setPage('manage'); setResultLoading(true)
-    try { const [active,deleted]=await Promise.all([getOwnedForms(user.uid),getDeletedForms(user.uid)]);setOwnedForms(active);setDeletedForms(deleted) } catch { setMessage('내 폼 목록을 불러오지 못했습니다.') } finally { setResultLoading(false) }
-  }
-  const deleteOwnedForm = async (form: OwnedForm) => {
-    if(form.organizationShared){setMessage('조직 공유 폼은 소유자만 삭제할 수 있습니다.');return}
-    if (!window.confirm(`“${form.title}” 폼을 휴지통으로 이동할까요?\n응답 ${form.responseCount}건은 보존되며 복구할 수 있습니다.`)) return
-    setDeletingFormId(form.id); setMessage('')
+    if (!user) return;
+    setMenuOpen(false);
+    setPage("manage");
+    setResultLoading(true);
     try {
-      await deleteFormRecord(form.id)
-      setOwnedForms((current) => current.filter((item) => item.id !== form.id))
-      setDeletedForms((current)=>[{id:form.id,title:form.title,deletedAt:new Date().toISOString()},...current])
-      setMessage('폼을 휴지통으로 이동했습니다. 응답과 첨부파일은 보존됩니다.')
-      if (form.id === formId) { setPublished(false); setFormId(newFormId()) }
-    } catch { setMessage('폼을 휴지통으로 이동하지 못했습니다. 제작자 계정인지 확인한 뒤 다시 시도해 주세요.') }
-    finally { setDeletingFormId('') }
-  }
+      const [active, deleted] = await Promise.all([
+        getOwnedForms(user.uid),
+        getDeletedForms(user.uid),
+      ]);
+      setOwnedForms(active);
+      setDeletedForms(deleted);
+    } catch {
+      setMessage("내 폼 목록을 불러오지 못했습니다.");
+    } finally {
+      setResultLoading(false);
+    }
+  };
+  const deleteOwnedForm = async (form: OwnedForm) => {
+    if (form.organizationShared) {
+      setMessage("조직 공유 폼은 소유자만 삭제할 수 있습니다.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `“${form.title}” 폼을 휴지통으로 이동할까요?\n응답 ${form.responseCount}건은 보존되며 복구할 수 있습니다.`,
+      )
+    )
+      return;
+    setDeletingFormId(form.id);
+    setMessage("");
+    try {
+      await deleteFormRecord(form.id);
+      setOwnedForms((current) => current.filter((item) => item.id !== form.id));
+      setDeletedForms((current) => [
+        { id: form.id, title: form.title, deletedAt: new Date().toISOString() },
+        ...current,
+      ]);
+      setMessage("폼을 휴지통으로 이동했습니다. 응답과 첨부파일은 보존됩니다.");
+      if (form.id === formId) {
+        setPublished(false);
+        setFormId(newFormId());
+      }
+    } catch {
+      setMessage(
+        "폼을 휴지통으로 이동하지 못했습니다. 제작자 계정인지 확인한 뒤 다시 시도해 주세요.",
+      );
+    } finally {
+      setDeletingFormId("");
+    }
+  };
   const toggleManageShare = async (form: OwnedForm) => {
     if (shareFormId === form.id) {
-      setShareFormId(''); setManageQr(''); setCopiedFormId('')
-      return
+      setShareFormId("");
+      setManageQr("");
+      setCopiedFormId("");
+      return;
     }
-    const publicLink = `${location.origin}/?form=${encodeURIComponent(form.publicSlug || form.id)}`
-    setShareFormId(form.id); setManageQr(''); setCopiedFormId(''); setMessage('')
-    try { setManageQr(await QRCode.toDataURL(publicLink, { width: 280, margin: 2 })) }
-    catch { setMessage('QR 코드를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.') }
-  }
+    const publicLink = `${location.origin}/?form=${encodeURIComponent(form.publicSlug || form.id)}`;
+    setShareFormId(form.id);
+    setManageQr("");
+    setCopiedFormId("");
+    setMessage("");
+    try {
+      setManageQr(
+        await QRCode.toDataURL(publicLink, { width: 280, margin: 2 }),
+      );
+    } catch {
+      setMessage("QR 코드를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+  };
   const copyManageLink = async (form: OwnedForm) => {
     try {
-      await navigator.clipboard.writeText(`${location.origin}/?form=${encodeURIComponent(form.publicSlug || form.id)}`)
-      setCopiedFormId(form.id)
-    } catch { setMessage('링크를 복사하지 못했습니다. 주소를 직접 선택해 복사해 주세요.') }
-  }
+      await navigator.clipboard.writeText(
+        `${location.origin}/?form=${encodeURIComponent(form.publicSlug || form.id)}`,
+      );
+      setCopiedFormId(form.id);
+    } catch {
+      setMessage(
+        "링크를 복사하지 못했습니다. 주소를 직접 선택해 복사해 주세요.",
+      );
+    }
+  };
   const restoreDeletedForm = async (form: DeletedForm) => {
     try {
-      await restoreFormRecord(form.id)
-      setDeletedForms((items)=>items.filter((item)=>item.id!==form.id))
-      if(user)setOwnedForms(await getOwnedForms(user.uid))
-      setMessage('폼을 일시중지 상태로 복구했습니다.')
+      await restoreFormRecord(form.id);
+      setDeletedForms((items) => items.filter((item) => item.id !== form.id));
+      if (user) setOwnedForms(await getOwnedForms(user.uid));
+      setMessage("폼을 일시중지 상태로 복구했습니다.");
     } catch {
-      setMessage('폼을 복구하지 못했습니다.')
+      setMessage("폼을 복구하지 못했습니다.");
     }
-  }
+  };
   const emptyTrash = async () => {
-    if (!deletedForms.length || !window.confirm(`휴지통의 폼 ${deletedForms.length}개를 영구 삭제할까요?\n\n폼과 모든 응답이 삭제되며 복구할 수 없습니다.`)) return
-    setEmptyingTrash(true); setMessage('')
+    if (
+      !deletedForms.length ||
+      !window.confirm(
+        `휴지통의 폼 ${deletedForms.length}개를 영구 삭제할까요?\n\n폼과 모든 응답이 삭제되며 복구할 수 없습니다.`,
+      )
+    )
+      return;
+    setEmptyingTrash(true);
+    setMessage("");
     try {
-      const deleted = await emptyDeletedForms()
-      setDeletedForms([])
-      setMessage(`휴지통을 비웠습니다. 폼 ${deleted}개를 영구 삭제했습니다.`)
-    } catch { setMessage('휴지통을 비우지 못했습니다. 잠시 후 다시 시도해 주세요.') }
-    finally { setEmptyingTrash(false) }
-  }
-  const copyPrefilledLink = async () => {
-    const url = new URL(shareLink)
-    let filled = 0
-    for (const question of questions.filter((item) => item.type !== 'file')) {
-      const value = window.prompt(`미리 채울 답변: ${question.label}\n비워두면 링크에서 제외됩니다.`)
-      if (value === null) return
-      if (value) { url.searchParams.set(`q${question.id}`, value); filled += 1 }
-    }
-    if (!filled) { setMessage('미리 채울 답변을 하나 이상 입력해 주세요.'); return }
-    await navigator.clipboard.writeText(url.toString())
-    setMessage('미리 답변이 채워진 링크를 복사했습니다.')
-  }
-  const openSampleResults = () => {
-    setResultsReturnPage('publish')
-    setResponses(createSampleResponses(questions, 10))
-    setResponsePage(undefined)
-    setSampleResults(true)
-    setMessage('')
-    setPage('results')
-  }
-  const openServiceSample = () => {
-    setProgram(serviceSampleProgram); setQuestions(serviceSampleQuestions); setTheme('kangnam')
-    setFormSettings(normalizeFormSettings({...defaultFormSettings,branding:{...defaultFormSettings.branding,accentColor:'#087fc5',backgroundColor:'#f3f8fd'}}))
-    setResponsePage(undefined); setSampleResults(false); setMessage(''); setPage('sample')
-  }
-  const openServiceSampleResults = () => {
-    setResultsReturnPage('sample')
-    setResponses(createSampleResponses(serviceSampleQuestions,36))
-    setResponsePage(undefined); setSampleResults(true); setMessage(''); setPage('results')
-  }
-  const moveQuestion = (index:number,direction:-1|1) => {
-    const target=index+direction
-    if(target<0||target>=questions.length)return
-    const question=questions[index]
-    const targetQuestion=questions[target]
-    const sourceSection=question.sectionId?.trim()||'section-main'
-    const targetSection=targetQuestion.sectionId?.trim()||'section-main'
-    if(sourceSection===targetSection){
-      const next=[...questions];[next[index],next[target]]=[next[target],next[index]];setQuestions(next)
-    }else{
-      setQuestions(current=>reorderQuestions(current,question.id,targetQuestion.id).map(item=>item.id===question.id?{
-        ...item,
-        sectionId:targetQuestion.sectionId,
-        sectionTitle:targetQuestion.sectionTitle,
-        sectionNext:undefined,
-      }:item))
-    }
-    setReorderAnnouncement(`${question.label} 질문을 ${target+1}번째로 이동했습니다.`)
-  }
-  const finishQuestionDrag = () => {
-    if (draggedQuestionId !== null && dragOverQuestionId !== null && draggedQuestionId !== dragOverQuestionId) {
-      const movedQuestion=questions.find((question)=>question.id===draggedQuestionId)
-      const targetQuestion=questions.find((question)=>question.id===dragOverQuestionId)
-      const targetIndex=questions.findIndex((question)=>question.id===dragOverQuestionId)
-      setQuestions((current) => reorderQuestions(current,draggedQuestionId,dragOverQuestionId).map((question)=>question.id===draggedQuestionId?{
-        ...question,
-        sectionId:targetQuestion?.sectionId,
-        sectionTitle:targetQuestion?.sectionTitle,
-        sectionNext:undefined,
-      }:question))
-      if(movedQuestion&&targetIndex>=0)setReorderAnnouncement(`${movedQuestion.label} 질문을 ${targetIndex+1}번째로 이동했습니다.`)
-    }
-    setDraggedQuestionId(null)
-    setDragOverQuestionId(null)
-  }
-  const permanentlyDeleteDeletedForm = async (form:DeletedForm) => {
-    if(!window.confirm(`“${form.title}” 폼과 모든 응답을 영구 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`))return
-    setDeletingFormId(form.id);setMessage('')
-    try{
-      await permanentlyDeleteForm(form.id)
-      setDeletedForms(items=>items.filter(item=>item.id!==form.id))
-      setMessage('휴지통에서 폼을 영구 삭제했습니다.')
-    }catch{
-      setMessage('폼을 영구 삭제하지 못했습니다.')
-    }finally{
-      setDeletingFormId('')
-    }
-  }
-  const duplicateQuestion = (index:number) => {
-    const source=questions[index]
-    const nextId=Math.max(Date.now(),...questions.map(question=>question.id+1))
-    const duplicate:FormQuestion={
-      ...source,
-      id:nextId,
-      options:source.options?[...source.options]:undefined,
-      optionImageUrls:source.optionImageUrls?[...source.optionImageUrls]:undefined,
-      branch:source.branch?{...source.branch}:undefined,
-      correctAnswers:source.correctAnswers?[...source.correctAnswers]:undefined,
-    }
-    setQuestions([...questions.slice(0,index+1),duplicate,...questions.slice(index+1)])
-  }
-  const toggleFormReception = async (form: OwnedForm) => {
-    if(form.organizationShared){setMessage('조직 공유 폼의 접수 상태는 소유자 또는 편집자만 변경할 수 있습니다.');return}
-    const nextStatus = form.status === 'open' ? 'paused' : 'open'
-    setMessage('')
-    try {
-      await updateFormLifecycle(form.id, nextStatus)
-      setOwnedForms((current) => current.map((item) => item.id === form.id
-        ? { ...item, status: nextStatus, published: true }
-        : item))
-      setMessage(nextStatus === 'open' ? '응답 접수를 시작했습니다.' : '응답 접수를 일시중지했습니다.')
+      const deleted = await emptyDeletedForms();
+      setDeletedForms([]);
+      setMessage(`휴지통을 비웠습니다. 폼 ${deleted}개를 영구 삭제했습니다.`);
     } catch {
-      setMessage('접수 상태를 변경하지 못했습니다.')
-    }
-  }
-  const editFormCloseTime = async (form: OwnedForm) => {
-    if(form.organizationShared){setMessage('조직 공유 폼의 마감 시각은 소유자 또는 편집자만 변경할 수 있습니다.');return}
-    const current = form.closesAt ? new Date(form.closesAt).toISOString().slice(0, 16) : ''
-    const value = window.prompt('새 마감 시각을 YYYY-MM-DDTHH:mm 형식으로 입력하세요. 비우면 마감 시각을 제거합니다.', current)
-    if (value === null) return
-    const closesAt = value ? new Date(value).toISOString() : undefined
-    try {
-      await updateFormSchedule(form.id, form.startsAt, closesAt)
-      setOwnedForms((items) => items.map((item) => item.id === form.id ? { ...item, closesAt } : item))
-      setMessage('마감 시각을 변경했습니다.')
-    } catch {
-      setMessage('마감 시각을 변경하지 못했습니다.')
-    }
-  }
-  const duplicateOwnedForm = async (form: OwnedForm) => {
-    setResultLoading(true); setMessage('')
-    try {
-      const source = await getPublishedForm(form.id, true)
-      setProgram({ ...source.program, programName: `${source.program.programName} 복사본` })
-      setQuestions(source.questions.map((question) => ({
-        ...question,
-        options: question.options ? [...question.options] : undefined,
-        optionImageUrls: question.optionImageUrls ? [...question.optionImageUrls] : undefined,
-      })))
-      setFormType(source.formType); setTheme(normalizeTheme(source.theme)); setEndDate(source.surveyEndDate)
-      setFormSettings({ ...normalizeFormSettings(source.settings), integrations:{...normalizeFormSettings(source.settings).integrations,formId:undefined}, publicSlug: undefined, version: normalizeFormSettings(source.settings).version + 1 })
-      setFormId(newFormId()); setPublished(false); setResponses([]); setResponsePage(undefined); setPage('edit')
-      setMessage('폼을 새 복사본으로 불러왔습니다. 검토 후 배포해 주세요.')
-    } catch {
-      setMessage('폼을 복사하지 못했습니다.')
+      setMessage("휴지통을 비우지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
-      setResultLoading(false)
+      setEmptyingTrash(false);
     }
-  }
+  };
+  const copyPrefilledLink = async () => {
+    const url = new URL(shareLink);
+    let filled = 0;
+    for (const question of questions.filter((item) => item.type !== "file")) {
+      const value = window.prompt(
+        `미리 채울 답변: ${question.label}\n비워두면 링크에서 제외됩니다.`,
+      );
+      if (value === null) return;
+      if (value) {
+        url.searchParams.set(`q${question.id}`, value);
+        filled += 1;
+      }
+    }
+    if (!filled) {
+      setMessage("미리 채울 답변을 하나 이상 입력해 주세요.");
+      return;
+    }
+    await navigator.clipboard.writeText(url.toString());
+    setMessage("미리 답변이 채워진 링크를 복사했습니다.");
+  };
+  const openSampleResults = () => {
+    setResultsReturnPage("publish");
+    setResponses(createSampleResponses(questions, 10));
+    setResponsePage(undefined);
+    setSampleResults(true);
+    setMessage("");
+    setPage("results");
+  };
+  const openServiceSample = () => {
+    setProgram(serviceSampleProgram);
+    setQuestions(serviceSampleQuestions);
+    setTheme("kangnam");
+    setFormSettings(
+      normalizeFormSettings({
+        ...defaultFormSettings,
+        branding: {
+          ...defaultFormSettings.branding,
+          accentColor: "#087fc5",
+          backgroundColor: "#f3f8fd",
+        },
+      }),
+    );
+    setResponsePage(undefined);
+    setSampleResults(false);
+    setMessage("");
+    setPage("sample");
+  };
+  const openServiceSampleResults = () => {
+    setResultsReturnPage("sample");
+    setResponses(createSampleResponses(serviceSampleQuestions, 36));
+    setResponsePage(undefined);
+    setSampleResults(true);
+    setMessage("");
+    setPage("results");
+  };
+  const moveQuestion = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= questions.length) return;
+    const question = questions[index];
+    const targetQuestion = questions[target];
+    const sourceSection = question.sectionId?.trim() || "section-main";
+    const targetSection = targetQuestion.sectionId?.trim() || "section-main";
+    if (sourceSection === targetSection) {
+      const next = [...questions];
+      [next[index], next[target]] = [next[target], next[index]];
+      setQuestions(next);
+    } else {
+      setQuestions((current) =>
+        reorderQuestions(current, question.id, targetQuestion.id).map((item) =>
+          item.id === question.id
+            ? {
+                ...item,
+                sectionId: targetQuestion.sectionId,
+                sectionTitle: targetQuestion.sectionTitle,
+                sectionNext: undefined,
+              }
+            : item,
+        ),
+      );
+    }
+    setReorderAnnouncement(
+      `${question.label} 질문을 ${target + 1}번째로 이동했습니다.`,
+    );
+  };
+  const finishQuestionDrag = () => {
+    if (
+      draggedQuestionId !== null &&
+      dragOverQuestionId !== null &&
+      draggedQuestionId !== dragOverQuestionId
+    ) {
+      const movedQuestion = questions.find(
+        (question) => question.id === draggedQuestionId,
+      );
+      const targetQuestion = questions.find(
+        (question) => question.id === dragOverQuestionId,
+      );
+      const targetIndex = questions.findIndex(
+        (question) => question.id === dragOverQuestionId,
+      );
+      setQuestions((current) =>
+        reorderQuestions(current, draggedQuestionId, dragOverQuestionId).map(
+          (question) =>
+            question.id === draggedQuestionId
+              ? {
+                  ...question,
+                  sectionId: targetQuestion?.sectionId,
+                  sectionTitle: targetQuestion?.sectionTitle,
+                  sectionNext: undefined,
+                }
+              : question,
+        ),
+      );
+      if (movedQuestion && targetIndex >= 0)
+        setReorderAnnouncement(
+          `${movedQuestion.label} 질문을 ${targetIndex + 1}번째로 이동했습니다.`,
+        );
+    }
+    setDraggedQuestionId(null);
+    setDragOverQuestionId(null);
+  };
+  const permanentlyDeleteDeletedForm = async (form: DeletedForm) => {
+    if (
+      !window.confirm(
+        `“${form.title}” 폼과 모든 응답을 영구 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`,
+      )
+    )
+      return;
+    setDeletingFormId(form.id);
+    setMessage("");
+    try {
+      await permanentlyDeleteForm(form.id);
+      setDeletedForms((items) => items.filter((item) => item.id !== form.id));
+      setMessage("휴지통에서 폼을 영구 삭제했습니다.");
+    } catch {
+      setMessage("폼을 영구 삭제하지 못했습니다.");
+    } finally {
+      setDeletingFormId("");
+    }
+  };
+  const duplicateQuestion = (index: number) => {
+    const source = questions[index];
+    const nextId = Math.max(
+      Date.now(),
+      ...questions.map((question) => question.id + 1),
+    );
+    const duplicate: FormQuestion = {
+      ...source,
+      id: nextId,
+      options: source.options ? [...source.options] : undefined,
+      optionImageUrls: source.optionImageUrls
+        ? [...source.optionImageUrls]
+        : undefined,
+      branch: source.branch ? { ...source.branch } : undefined,
+      correctAnswers: source.correctAnswers
+        ? [...source.correctAnswers]
+        : undefined,
+    };
+    setQuestions([
+      ...questions.slice(0, index + 1),
+      duplicate,
+      ...questions.slice(index + 1),
+    ]);
+  };
+  const toggleFormReception = async (form: OwnedForm) => {
+    if (form.organizationShared) {
+      setMessage(
+        "조직 공유 폼의 접수 상태는 소유자 또는 편집자만 변경할 수 있습니다.",
+      );
+      return;
+    }
+    const nextStatus = form.status === "open" ? "paused" : "open";
+    setMessage("");
+    try {
+      await updateFormLifecycle(form.id, nextStatus);
+      setOwnedForms((current) =>
+        current.map((item) =>
+          item.id === form.id
+            ? { ...item, status: nextStatus, published: true }
+            : item,
+        ),
+      );
+      setMessage(
+        nextStatus === "open"
+          ? "응답 접수를 시작했습니다."
+          : "응답 접수를 일시중지했습니다.",
+      );
+    } catch {
+      setMessage("접수 상태를 변경하지 못했습니다.");
+    }
+  };
+  const editFormCloseTime = async (form: OwnedForm) => {
+    if (form.organizationShared) {
+      setMessage(
+        "조직 공유 폼의 마감 시각은 소유자 또는 편집자만 변경할 수 있습니다.",
+      );
+      return;
+    }
+    const current = form.closesAt
+      ? new Date(form.closesAt).toISOString().slice(0, 16)
+      : "";
+    const value = window.prompt(
+      "새 마감 시각을 YYYY-MM-DDTHH:mm 형식으로 입력하세요. 비우면 마감 시각을 제거합니다.",
+      current,
+    );
+    if (value === null) return;
+    const closesAt = value ? new Date(value).toISOString() : undefined;
+    try {
+      await updateFormSchedule(form.id, form.startsAt, closesAt);
+      setOwnedForms((items) =>
+        items.map((item) =>
+          item.id === form.id ? { ...item, closesAt } : item,
+        ),
+      );
+      setMessage("마감 시각을 변경했습니다.");
+    } catch {
+      setMessage("마감 시각을 변경하지 못했습니다.");
+    }
+  };
+  const duplicateOwnedForm = async (form: OwnedForm) => {
+    setResultLoading(true);
+    setMessage("");
+    try {
+      const source = await getPublishedForm(form.id, true);
+      setProgram({
+        ...source.program,
+        programName: `${source.program.programName} 복사본`,
+      });
+      setQuestions(
+        source.questions.map((question) => ({
+          ...question,
+          options: question.options ? [...question.options] : undefined,
+          optionImageUrls: question.optionImageUrls
+            ? [...question.optionImageUrls]
+            : undefined,
+        })),
+      );
+      setFormType(source.formType);
+      setTheme(normalizeTheme(source.theme));
+      setEndDate(source.surveyEndDate);
+      setFormSettings({
+        ...normalizeFormSettings(source.settings),
+        integrations: {
+          ...normalizeFormSettings(source.settings).integrations,
+          formId: undefined,
+        },
+        publicSlug: undefined,
+        version: normalizeFormSettings(source.settings).version + 1,
+      });
+      setFormId(newFormId());
+      setPublished(false);
+      setResponses([]);
+      setResponsePage(undefined);
+      setPage("edit");
+      setMessage("폼을 새 복사본으로 불러왔습니다. 검토 후 배포해 주세요.");
+    } catch {
+      setMessage("폼을 복사하지 못했습니다.");
+    } finally {
+      setResultLoading(false);
+    }
+  };
   const editOwnedForm = async (form: OwnedForm) => {
-    const startsInFuture=!form.startsAt||new Date(form.startsAt).getTime()>Date.now()
-    const editableStatus=form.status==='draft'||form.status==='private'||(form.status==='scheduled'&&startsInFuture)
-    if(form.organizationShared||form.responseCount>0||!editableStatus){
-      setMessage('접수 시작 전이며 응답이 없는 폼만 수정할 수 있습니다.')
-      return
+    const startsInFuture =
+      !form.startsAt || new Date(form.startsAt).getTime() > Date.now();
+    const editableStatus =
+      form.status === "draft" ||
+      form.status === "private" ||
+      (form.status === "scheduled" && startsInFuture);
+    if (form.organizationShared || form.responseCount > 0 || !editableStatus) {
+      setMessage("접수 시작 전이며 응답이 없는 폼만 수정할 수 있습니다.");
+      return;
     }
-    setResultLoading(true);setMessage('')
-    try{
-      const source=await getPublishedForm(form.id,true)
-      setProgram(source.program)
-      setQuestions(source.questions.map(question=>({
-        ...question,
-        options:question.options?[...question.options]:undefined,
-        optionImageUrls:question.optionImageUrls?[...question.optionImageUrls]:undefined,
-        branch:question.branch?{...question.branch}:undefined,
-        correctAnswers:question.correctAnswers?[...question.correctAnswers]:undefined,
-      })))
-      setFormType(source.formType);setTheme(normalizeTheme(source.theme));setEndDate(source.surveyEndDate)
-      setFormSettings({...normalizeFormSettings(source.settings),integrations:{...normalizeFormSettings(source.settings).integrations,formId:form.id}});setFormId(form.id);setPublished(true)
-      setResponses([]);setResponsePage(undefined);setCreationMode('manual');setPage('edit')
-      setMessage('접수 시작 전 폼을 편집 모드로 불러왔습니다.')
-    }catch{
-      setMessage('수정할 폼을 불러오지 못했습니다.')
-    }finally{
-      setResultLoading(false)
+    setResultLoading(true);
+    setMessage("");
+    try {
+      const source = await getPublishedForm(form.id, true);
+      setProgram(source.program);
+      setQuestions(
+        source.questions.map((question) => ({
+          ...question,
+          options: question.options ? [...question.options] : undefined,
+          optionImageUrls: question.optionImageUrls
+            ? [...question.optionImageUrls]
+            : undefined,
+          branch: question.branch ? { ...question.branch } : undefined,
+          correctAnswers: question.correctAnswers
+            ? [...question.correctAnswers]
+            : undefined,
+        })),
+      );
+      setFormType(source.formType);
+      setTheme(normalizeTheme(source.theme));
+      setEndDate(source.surveyEndDate);
+      setFormSettings({
+        ...normalizeFormSettings(source.settings),
+        integrations: {
+          ...normalizeFormSettings(source.settings).integrations,
+          formId: form.id,
+        },
+      });
+      setFormId(form.id);
+      setPublished(true);
+      setResponses([]);
+      setResponsePage(undefined);
+      setCreationMode("manual");
+      setPage("edit");
+      setMessage("접수 시작 전 폼을 편집 모드로 불러왔습니다.");
+    } catch {
+      setMessage("수정할 폼을 불러오지 못했습니다.");
+    } finally {
+      setResultLoading(false);
     }
-  }
+  };
   const openVersionHistory = async (form: OwnedForm) => {
     try {
-      setVersionHistory(await getFormVersions(form.id)); setVersionHistoryTitle(form.title)
+      setVersionHistory(await getFormVersions(form.id));
+      setVersionHistoryTitle(form.title);
     } catch {
-      setMessage('버전 기록을 불러오지 못했습니다.')
+      setMessage("버전 기록을 불러오지 못했습니다.");
     }
-  }
+  };
 
-  if (!authReady || emailLinkMode === 'checking' || (requestedFormId && !user && guestSignInStatus !== 'done')) return <div className="center"><LoaderCircle className="spin" /></div>
-  if (emailLinkMode === 'needs-email' || !user) return <Login publicForm={Boolean(requestedFormId)} loadingProvider={loginProvider} error={authError} initialEmail={getPendingEmailAddress()} completingEmailLink={emailLinkMode === 'needs-email'} onLogin={login} onStartNewEmailLink={startNewEmailLink} />
-  if (requestedFormId && publicFormLoaded && user.isAnonymous && formSettings.access.participation !== 'anyone') return <Login publicForm loadingProvider={loginProvider} error={authError} initialEmail={getPendingEmailAddress()} completingEmailLink={false} onLogin={login} onStartNewEmailLink={startNewEmailLink} />
-  if (requestedFormId && publicFormLoaded && user) return <PublicForm user={user} formId={formId} program={program} questions={questions} theme={theme} endDate={endDate} settings={formSettings} preview={requestedPreview} publicResults={requestedPublicResults} onLogout={doLogout} />
-  if (requestedFormId && authError) return <main className="public-shell"><div className="complete card"><h1>폼을 열 수 없습니다</h1><p>{authError}</p><a className="primary link" href="/">대플폼 홈으로</a></div></main>
-  if (requestedFormId) return <div className="center"><LoaderCircle className="spin"/></div>
-  if (!user) return <div className="center"><LoaderCircle className="spin"/></div>
+  if (
+    !authReady ||
+    emailLinkMode === "checking" ||
+    (requestedFormId && !user && guestSignInStatus !== "done")
+  )
+    return (
+      <div className="center">
+        <LoaderCircle className="spin" />
+      </div>
+    );
+  if (emailLinkMode === "needs-email" || !user)
+    return (
+      <Login
+        publicForm={Boolean(requestedFormId)}
+        loadingProvider={loginProvider}
+        error={authError}
+        initialEmail={getPendingEmailAddress()}
+        completingEmailLink={emailLinkMode === "needs-email"}
+        onLogin={login}
+        onStartNewEmailLink={startNewEmailLink}
+      />
+    );
+  if (
+    requestedFormId &&
+    publicFormLoaded &&
+    user.isAnonymous &&
+    formSettings.access.participation !== "anyone"
+  )
+    return (
+      <Login
+        publicForm
+        loadingProvider={loginProvider}
+        error={authError}
+        initialEmail={getPendingEmailAddress()}
+        completingEmailLink={false}
+        onLogin={login}
+        onStartNewEmailLink={startNewEmailLink}
+      />
+    );
+  if (requestedFormId && publicFormLoaded && user)
+    return (
+      <PublicForm
+        user={user}
+        formId={formId}
+        program={program}
+        questions={questions}
+        theme={theme}
+        endDate={endDate}
+        settings={formSettings}
+        preview={requestedPreview}
+        publicResults={requestedPublicResults}
+        onLogout={doLogout}
+      />
+    );
+  if (requestedFormId && authError)
+    return (
+      <main className="public-shell">
+        <div className="complete card">
+          <h1>폼을 열 수 없습니다</h1>
+          <p>{authError}</p>
+          <a className="primary link" href="/">
+            대플폼 홈으로
+          </a>
+        </div>
+      </main>
+    );
+  if (requestedFormId)
+    return (
+      <div className="center">
+        <LoaderCircle className="spin" />
+      </div>
+    );
+  if (!user)
+    return (
+      <div className="center">
+        <LoaderCircle className="spin" />
+      </div>
+    );
 
-  return <div className={`app theme-${theme}`}>
-    <a className="skip-link" href="#main-content">본문으로 건너뛰기</a>
-    <header><button className="brand university-brand" aria-label="강남대학교 대플폼 홈" onClick={startNewForm}><img src={kangnamUniversityLogo} alt="강남대학교"/><span className="university-name"><b>강남대학교</b><small>KANGNAM UNIVERSITY</small></span><i aria-hidden="true"/><span className="service-name"><b>대플폼</b><small>AI FORM BUILDER</small></span></button><nav><button onClick={startNewForm}>새 폼</button><button onClick={() => void openManage()}>내 폼 관리</button><div className="user-menu"><button className="avatar" onClick={() => setMenuOpen(!menuOpen)}>{user.displayName?.[0] ?? 'U'} <ChevronDown size={14}/></button>{menuOpen && <div className="menu"><strong>{user.displayName}</strong><small>{user.email}</small><button onClick={() => void openManage()}><LayoutDashboard size={16}/> 내 폼 관리</button><button onClick={() => void doLogout()}><LogOut size={16}/> 로그아웃</button></div>}</div></nav></header>
-    <div className="university-promotion-bar" aria-hidden="true"><img src={kangnamPromotionBar} alt=""/></div>
-    <UniversityPatternBand/>
-    <main id="main-content">
-      {page === 'create' && <section><Title step="1" title="자료를 읽고 폼을 만듭니다" text="PDF·PNG·JPG·HWP 참고문서와 담당자 메모를 Gemini가 함께 분석합니다."/><div className="grid two"><div className="card"><h2>참고문서</h2><div className={`drop ${dragging ? 'dragging' : ''}`} onClick={() => fileRef.current?.click()} onDragOver={(e) => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}><Upload/><b>파일을 선택하거나 끌어 놓으세요</b><span>PDF, PNG, JPG, HWP, HWPX · 최대 5개</span><input ref={fileRef} hidden type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.hwp,.hwpx" onChange={onFiles}/></div>{files.map((file, i) => <div className="file" key={`${file.name}-${i}`}><FileText size={16}/><span>{file.name}</span><button onClick={() => setFiles(files.filter((_, index) => index !== i))}><Trash2 size={15}/></button></div>)}</div><div className="card"><h2>담당자 메모</h2><textarea aria-label="AI 폼 생성을 위한 담당자 메모" aria-describedby="memo-help" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder={'예:\n이 자료는 행사 만족도 조사입니다. 익명으로 받고 개선 의견을 자세히 물어봐 주세요.\n학적 상태에서 재학생을 선택하면 만족도 섹션으로, 휴학생을 선택하면 복학 지원 섹션으로 이동해 주세요.'}/><small id="memo-help">조건부 섹션이 필요하면 기준 질문, 선택지, 이동할 섹션을 구체적으로 적어 주세요. 문서와 메모가 함께 AI 분석에 반영됩니다.</small></div></div>{analysisError && <Notice text={analysisError}/>}<div className="actions create-actions"><button type="button" className="manual-create" onClick={startManualForm}><Plus/> 직접 폼 만들기</button><button type="button" className="sample-view" onClick={openServiceSample}><Eye/> 샘플 보기</button><button className="primary" onClick={() => void analyze()} disabled={analysisLoading}>{analysisLoading ? <LoaderCircle className="spin"/> : <WandSparkles/>}{analysisLoading ? '문서를 읽는 중...' : 'AI로 폼 만들기'}</button></div></section>}
-      {page === 'sample' && <section><Title step="" title="조건부 섹션 샘플" text="학적 상태를 선택하고 다음 버튼을 누르면 응답에 맞는 섹션으로 이동합니다."/><div className="sample-showcase"><div className="card sample-guide"><span className="badge">INTERACTIVE SAMPLE</span><h2>분기 흐름을 직접 확인하세요</h2><p><b>재학생</b>을 선택하면 프로그램 만족도 질문으로, <b>휴학생</b>을 선택하면 복학 지원 질문으로 이동합니다.</p><p>실제 폼에서는 담당자 메모에 같은 방식으로 조건을 적으면 AI가 섹션과 이동 규칙을 함께 구성합니다.</p><button type="button" onClick={openServiceSampleResults}><BarChart3/> 샘플 결과 보기</button></div><FormBody program={serviceSampleProgram} questions={serviceSampleQuestions} theme="kangnam" branding={formSettings.branding}/></div><div className="actions between"><button type="button" onClick={()=>setPage('create')}><ChevronLeft/> 돌아가기</button><button type="button" className="primary" onClick={openServiceSampleResults}><BarChart3/> 분기 응답 결과 보기</button></div></section>}
-{/*
+  return (
+    <div className={`app theme-${theme}`}>
+      <a className="skip-link" href="#main-content">
+        본문으로 건너뛰기
+      </a>
+      <header>
+        <button
+          className="brand university-brand"
+          aria-label="강남대학교 대플폼 홈"
+          onClick={startNewForm}
+        >
+          <img src={kangnamUniversityLogo} alt="강남대학교" />
+          <span className="university-name">
+            <b>강남대학교</b>
+            <small>KANGNAM UNIVERSITY</small>
+          </span>
+          <i aria-hidden="true" />
+          <span className="service-name">
+            <b>대플폼</b>
+            <small>AI FORM BUILDER</small>
+          </span>
+        </button>
+        <nav>
+          <button onClick={startNewForm}>새 폼</button>
+          <button onClick={() => void openManage()}>내 폼 관리</button>
+          <div className="user-menu">
+            <button className="avatar" onClick={() => setMenuOpen(!menuOpen)}>
+              {user.displayName?.[0] ?? 'U'} <ChevronDown size={14} />
+            </button>
+            {menuOpen && (
+              <div className="menu">
+                <strong>{user.displayName}</strong>
+                <small>{user.email}</small>
+                <button onClick={() => void openManage()}>
+                  <LayoutDashboard size={16} /> 내 폼 관리
+                </button>
+                <button onClick={() => void doLogout()}>
+                  <LogOut size={16} /> 로그아웃
+                </button>
+              </div>
+            )}
+          </div>
+        </nav>
+      </header>
+      <div className="university-promotion-bar" aria-hidden="true">
+        <img src={kangnamPromotionBar} alt="" />
+      </div>
+      <UniversityPatternBand />
+      <main id="main-content">
+        {page === 'create' && (
+          <section>
+            <Title
+              step="1"
+              title="자료를 읽고 폼을 만듭니다"
+              text="PDF·PNG·JPG·HWP 참고문서와 담당자 메모를 Gemini가 함께 분석합니다."
+            />
+            <div className="grid two">
+              <div className="card">
+                <h2>참고문서</h2>
+                <div
+                  className={`drop ${dragging ? 'dragging' : ''}`}
+                  onClick={() => fileRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    setDragging(true)
+                  }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={onDrop}
+                >
+                  <Upload />
+                  <b>파일을 선택하거나 끌어 놓으세요</b>
+                  <span>PDF, PNG, JPG, HWP, HWPX · 최대 5개</span>
+                  <input
+                    ref={fileRef}
+                    hidden
+                    type="file"
+                    multiple
+                    accept=".pdf,.png,.jpg,.jpeg,.hwp,.hwpx"
+                    onChange={onFiles}
+                  />
+                </div>
+                {files.map((file, i) => (
+                  <div className="file" key={`${file.name}-${i}`}>
+                    <FileText size={16} />
+                    <span>{file.name}</span>
+                    <button
+                      onClick={() =>
+                        setFiles(files.filter((_, index) => index !== i))
+                      }
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="card">
+                <h2>담당자 메모</h2>
+                <textarea
+                  aria-label="AI 폼 생성을 위한 담당자 메모"
+                  aria-describedby="memo-help"
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
+                  placeholder={
+                    '예:\n이 자료는 행사 만족도 조사입니다. 익명으로 받고 개선 의견을 자세히 물어봐 주세요.\n학적 상태에서 재학생을 선택하면 만족도 섹션으로, 휴학생을 선택하면 복학 지원 섹션으로 이동해 주세요.'
+                  }
+                />
+                <small id="memo-help">
+                  조건부 섹션이 필요하면 기준 질문, 선택지, 이동할 섹션을
+                  구체적으로 적어 주세요. 문서와 메모가 함께 AI 분석에
+                  반영됩니다.
+                </small>
+              </div>
+            </div>
+            {analysisError && <Notice text={analysisError} />}
+            <div className="actions create-actions">
+              <button
+                type="button"
+                className="manual-create"
+                onClick={startManualForm}
+              >
+                <Plus /> 직접 폼 만들기
+              </button>
+              <button
+                type="button"
+                className="sample-view"
+                onClick={openServiceSample}
+              >
+                <Eye /> 샘플 보기
+              </button>
+              <button
+                className="primary"
+                onClick={() => void analyze()}
+                disabled={analysisLoading}
+              >
+                {analysisLoading ? (
+                  <LoaderCircle className="spin" />
+                ) : (
+                  <WandSparkles />
+                )}
+                {analysisLoading ? '문서를 읽는 중...' : 'AI로 폼 만들기'}
+              </button>
+            </div>
+          </section>
+        )}
+        {page === 'sample' && (
+          <section>
+            <Title
+              step=""
+              title="조건부 섹션 샘플"
+              text="학적 상태를 선택하고 다음 버튼을 누르면 응답에 맞는 섹션으로 이동합니다."
+            />
+            <div className="sample-showcase">
+              <div className="card sample-guide">
+                <span className="badge">INTERACTIVE SAMPLE</span>
+                <h2>분기 흐름을 직접 확인하세요</h2>
+                <p>
+                  <b>재학생</b>을 선택하면 프로그램 만족도 질문으로,{' '}
+                  <b>휴학생</b>을 선택하면 복학 지원 질문으로 이동합니다.
+                </p>
+                <p>
+                  실제 폼에서는 담당자 메모에 같은 방식으로 조건을 적으면 AI가
+                  섹션과 이동 규칙을 함께 구성합니다.
+                </p>
+                <button type="button" onClick={openServiceSampleResults}>
+                  <BarChart3 /> 샘플 결과 보기
+                </button>
+              </div>
+              <FormBody
+                program={serviceSampleProgram}
+                questions={serviceSampleQuestions}
+                theme="kangnam"
+                branding={formSettings.branding}
+              />
+            </div>
+            <div className="actions between">
+              <button type="button" onClick={() => setPage('create')}>
+                <ChevronLeft /> 돌아가기
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={openServiceSampleResults}
+              >
+                <BarChart3 /> 분기 응답 결과 보기
+              </button>
+            </div>
+          </section>
+        )}
+        {/*
       {page === 'edit' && <section><Title step="2" title={creationMode === 'manual' ? '폼 내용을 직접 입력하세요' : 'AI가 만든 폼을 확인하세요'} text={creationMode === 'manual' ? '기본 정보와 질문을 입력한 뒤 디자인·배포 설정으로 이동합니다.' : '문서에서 확실하지 않은 내용은 검토 항목으로 표시합니다.'}/>{reviewNotes.length > 0 && <div className="notice warn"><b>사람이 확인할 항목</b>{reviewNotes.map((note) => <span key={note}>• {note}</span>)}</div>}<div className="grid edit"><div><div className="card form-fields"><h2>폼 기본 정보</h2><label>폼 제목<input value={program.programName} onChange={(e) => setProgram({...program, programName:e.target.value})}/></label><label>설명<textarea value={program.description} onChange={(e) => setProgram({...program, description:e.target.value})}/></label><div className="grid two"><label>대상<input value={program.target} onChange={(e) => setProgram({...program, target:e.target.value})}/></label><label>기간<input value={program.period} onChange={(e) => setProgram({...program, period:e.target.value})}/></label></div></div><div className="card"><div className="row"><h2>질문 {questions.length}개</h2><button onClick={() => setQuestions([...questions,{id:Date.now(),label:'',type:'short_text',required:false}])}><Plus size={16}/> 질문 추가</button></div>{questions.map((q,index)=><QuestionEditor key={q.id} question={q} index={index} count={questions.length} formId={formId} user={user} onChange={(change)=>setQuestions(questions.map(item=>item.id===q.id?{...item,...change}:item))} onMove={(direction)=>moveQuestion(index,direction)} onDuplicate={()=>duplicateQuestion(index)} onDelete={()=>setQuestions(questions.filter(item=>item.id!==q.id))}/>)}{formSettings.quiz.enabled&&<QuizConfiguration questions={questions} onChange={setQuestions}/>}</div></div><aside className="card preview"><h2>미리보기</h2><FormBody program={program} questions={questions} theme={theme} branding={formSettings.branding}/></aside></div><div className="actions between"><button onClick={() => setPage('create')}>자료 다시 선택</button><button className="primary" onClick={() => setPage('publish')}>디자인·배포 설정</button></div></section>}
 */}
-      {page === 'edit' && <section><Title step="2" title={creationMode === 'manual' ? '폼 내용을 직접 입력하세요' : 'AI가 만든 폼을 확인하세요'} text={creationMode === 'manual' ? '기본 정보와 질문을 입력한 뒤 디자인·배포 설정으로 이동합니다.' : '문서에서 확실하지 않은 내용은 검토 항목으로 표시합니다.'}/>{reviewNotes.length > 0 && <div className="notice warn"><b>사람이 확인할 항목</b>{reviewNotes.map((note) => <span key={note}>• {note}</span>)}</div>}<div className="grid edit"><div><div className="card form-fields"><h2>폼 기본 정보</h2><label>폼 제목<input value={program.programName} onChange={(e) => setProgram({...program, programName:e.target.value})}/></label><label>설명<textarea value={program.description} onChange={(e) => setProgram({...program, description:e.target.value})}/></label><div className="grid two"><label>대상<input value={program.target} onChange={(e) => setProgram({...program, target:e.target.value})}/></label><label>기간<input value={program.period} onChange={(e) => setProgram({...program, period:e.target.value})}/></label></div></div><QuestionSectionsEditor questions={questions} setQuestions={setQuestions} formId={formId} user={user} draggedQuestionId={draggedQuestionId} dragOverQuestionId={dragOverQuestionId} reorderAnnouncement={reorderAnnouncement} onDragStart={(id)=>{setDraggedQuestionId(id);setDragOverQuestionId(id)}} onDragMove={(clientX,clientY)=>{const target=document.elementFromPoint(clientX,clientY)?.closest<HTMLElement>('[data-question-id]');const targetId=Number(target?.dataset.questionId);if(Number.isFinite(targetId))setDragOverQuestionId(targetId)}} onDragEnd={finishQuestionDrag} onDragCancel={()=>{setDraggedQuestionId(null);setDragOverQuestionId(null)}} onMove={moveQuestion} onDuplicate={duplicateQuestion}/>{formSettings.quiz.enabled&&<QuizConfiguration questions={questions} onChange={setQuestions}/>}</div><aside className="card preview"><h2>미리보기</h2><FormBody program={program} questions={questions} theme={theme} branding={formSettings.branding}/></aside></div><div className="actions between"><button onClick={() => setPage('create')}>자료 다시 선택</button><button className="primary" disabled={routingWarnings(questions).length>0} onClick={() => setPage('publish')}>디자인·배포 설정</button></div></section>}
-      {page === 'publish' && <section><Title step="3" title="디자인과 참여 정책을 설정하세요" text="참여 대상, 접수 일정, 제출 후 동작을 정한 뒤 공개 링크를 생성합니다."/><div className="grid two"><div className="card"><h2><Palette size={20}/> 폼 디자인</h2><div className="themes" role="group" aria-label="폼 디자인 선택">{selectableThemes.map((item) => <button type="button" key={item.id} className={`theme-option ${item.id} ${theme===item.id?'selected':''}`} aria-pressed={theme===item.id} onClick={() => setTheme(item.id)}><span className="theme-swatch"><ThemeIcon theme={item.id}/></span><span className="theme-copy"><b>{item.label}</b><small>{item.description}</small></span></button>)}</div>{theme==='green'&&<div className="basic-color-customizer"><div><Palette aria-hidden="true"/><span><b>기본 디자인 색상</b><small>원하는 강조색과 배경색을 자유롭게 선택하세요.</small></span></div><label>강조색<input type="color" value={formSettings.branding.accentColor} onChange={(event)=>setFormSettings(current=>({...current,branding:{...current.branding,accentColor:event.target.value}}))}/><code>{formSettings.branding.accentColor}</code></label><label>배경색<input type="color" value={formSettings.branding.backgroundColor} onChange={(event)=>setFormSettings(current=>({...current,branding:{...current.branding,backgroundColor:event.target.value}}))}/><code>{formSettings.branding.backgroundColor}</code></label></div>}<FormBody program={program} questions={questions} theme={theme} branding={formSettings.branding}/></div><div className="card publish-card"><h2>공개·응답 설정</h2>{creationMode==='ai'&&<div className="ai-settings-note"><WandSparkles/><span><b>AI 추천 설정이 적용되었습니다</b><small>문서에서 찾은 대상·일정·응답 방식과 공유 정보를 바탕으로 채웠습니다. 배포 전에 확인하고 자유롭게 수정할 수 있습니다.</small></span></div>}<FormPolicyEditor value={formSettings} previewTitle={program.programName} previewDescription={program.description} onChange={setFormSettings} onCollaborator={published?async(email,role)=>setFormCollaborator(formId,email,role):undefined}/><label>데이터 보존 기준일<input type="date" value={endDate} onChange={(e)=>setEndDate(e.target.value)}/></label><button className="primary wide" onClick={() => void publish()} disabled={publishLoading}>{publishLoading?<LoaderCircle className="spin"/>:<Send/>} 설정 저장하고 배포하기</button>{message && <Notice text={message}/>} {published && <div className="share"><CheckCircle2/><h3>배포 완료</h3>{qr?<div className="qr-copy-wrap"><img src={qr} alt="공개 폼 QR 코드"/><button type="button" className={`qr-copy-button ${publishedQrCopied?'copied':''}`} onClick={() => void copyPublishedQr()} aria-label="QR 이미지 복사">{publishedQrCopied?<CheckCircle2/>:<Copy/>}</button></div>:<QrCode/>}<div className="copy"><input readOnly value={shareLink}/><button onClick={() => void navigator.clipboard.writeText(shareLink)} aria-label="공개 링크 복사"><Copy/></button></div><div className="share-action-grid"><a className="primary link" href={previewLink} target="_blank" rel="noreferrer"><Eye size={17}/> 미리보기</a><button onClick={() => void sharePublicForm(program.programName,shareLink).catch(()=>setMessage('공유를 완료하지 못했습니다. 링크를 직접 복사해 주세요.'))}><Send size={17}/> 공유</button>{qr&&<a className="link" href={qr} download={`${program.programName.replace(/[\\/:*?"<>|]/g,'_')}_QR.png`}><Download size={17}/> QR PNG</a>}<a className="link" href={`mailto:?subject=${encodeURIComponent(formSettings.branding.shareTitle||program.programName)}&body=${encodeURIComponent(`${formSettings.branding.shareDescription||program.description}\n${shareLink}`)}`}><Send size={17}/> 이메일</a><button onClick={() => void navigator.clipboard.writeText(`<iframe src="${shareLink}" title="${program.programName}" width="100%" height="720" loading="lazy"></iframe>`)}><Copy size={17}/> 삽입 코드</button><button onClick={() => void copyPrefilledLink().catch(()=>setMessage('미리 채운 링크를 복사하지 못했습니다.'))}><Copy size={17}/> 미리 채운 링크</button>{formSettings.submission.showPublicResults&&<button onClick={() => void navigator.clipboard.writeText(`${shareLink}&results=1`).then(()=>setMessage('익명 결과 공개 링크를 복사했습니다.'))}><BarChart3 size={17}/> 결과 공개 링크</button>}</div></div>}</div></div><div className="actions between"><button onClick={() => setPage('edit')}>폼 수정</button><div className="actions-inline"><button onClick={openSampleResults}><BarChart3/> 샘플 결과</button><button className="primary" onClick={() => void loadResults()} disabled={resultLoading}>실제 응답 결과</button></div></div></section>}
-      {page === 'results' && <ResultsDashboard title={program.programName} loading={resultLoading} responses={responses} questions={questions} summaries={summaries} message={message} sample={sampleResults} initialPage={responsePage} onBack={() => setPage(resultsReturnPage)} onRefresh={() => sampleResults?openSampleResults():void loadResults()} onQuery={sampleResults?undefined:async(query)=>queryFormResponses(formId,query)} onManage={sampleResults?undefined:async(ids,action)=>manageFormResponses(formId,ids,action)} onLoadExport={sampleResults?undefined:async(query)=>(await queryFormResponses(formId,query,true)).items} onAnalyze={sampleResults?undefined:async(query)=>{const items=(await queryFormResponses(formId,query,true)).items;const topics=await summarizeResponses(items.flatMap(item=>Object.values(item.answers).filter(value=>typeof value==='string').map(String)));if(user)await saveAnalysisRecord({formId,owner:user,stats:{applicants:items.length,participants:items.length,satisfactionResponses:0,satisfactionScores:[]},topics,surveyEndDate:endDate});return topics}} onExportExcel={(items,exportQuestions) => void exportResponsesToExcel(program.programName, exportQuestions, items, analyzeStoredResponses(exportQuestions, items))}/>}
-      {page === 'manage' && ownedForms.length>0 && <section className="card version-history-panel"><div className="row"><div><span className="eyebrow">VERSION HISTORY</span><h2>폼 수정 기록</h2></div><div className="version-form-buttons">{ownedForms.map(form=><button key={form.id} onClick={()=>void openVersionHistory(form)}>{form.title}</button>)}</div></div>{versionHistoryTitle&&<div><h3>{versionHistoryTitle}</h3>{versionHistory.length?<ol>{versionHistory.map(version=><li key={version.version}><strong>버전 {version.version}</strong><span>{version.questionCount}개 질문 · {version.createdAt?new Intl.DateTimeFormat('ko-KR',{dateStyle:'medium',timeStyle:'short'}).format(new Date(version.createdAt)):'저장 시각 없음'}</span></li>)}</ol>:<p>저장된 버전 기록이 없습니다.</p>}</div>}</section>}
-      {page === 'manage' && deletedForms.length>0 && <section className="card trash-panel"><div className="trash-heading"><div><span className="eyebrow">TRASH</span><h2>휴지통</h2><p>삭제한 폼과 응답은 복구 전까지 공개되지 않습니다.</p></div><button type="button" className="danger" disabled={emptyingTrash} onClick={()=>void emptyTrash()}>{emptyingTrash?<LoaderCircle className="spin" size={16}/>:<Trash2 size={16}/>} 휴지통 비우기</button></div>{deletedForms.map(form=><div className="row trash-item" key={form.id}><span><b>{form.title}</b><small>{form.deletedAt?new Intl.DateTimeFormat('ko-KR',{dateStyle:'medium',timeStyle:'short'}).format(new Date(form.deletedAt)):'삭제 시각 없음'}</small></span><div className="trash-item-actions"><button onClick={()=>void restoreDeletedForm(form)}><RefreshCcw/> 복구</button><button type="button" className="trash-delete-icon danger" aria-label={`${form.title} 영구 삭제`} title="휴지통에서 영구 삭제" disabled={deletingFormId===form.id} onClick={()=>void permanentlyDeleteDeletedForm(form)}>{deletingFormId===form.id?<LoaderCircle className="spin" size={16}/>:<Trash2 size={17}/>}</button></div></div>)}</section>}
-      {page === 'manage' && <section><Title step="" title="내가 만든 폼" text="폼별 접수 상태, 응답 수와 공유 링크를 관리합니다."/>{message&&<Notice text={message}/>} {resultLoading?<div className="center"><LoaderCircle className="spin"/></div>:<div className="manage-list">{ownedForms.length?ownedForms.map((form)=>{const publicLink=`${location.origin}/?form=${encodeURIComponent(form.publicSlug||form.id)}`;const formPreviewLink=`${publicLink}&preview=1`;const shareOpen=shareFormId===form.id;const full=Boolean(form.maxResponses&&form.responseCount>=form.maxResponses);const statusLabel=full?'최대 인원 마감':{draft:'초안',scheduled:'시작 전',open:'접수 중',paused:'일시중지',closed:'마감',private:'비공개'}[form.status??'draft'];const remaining=form.closesAt?new Date(form.closesAt).getTime()-Date.now():0;const startsInFuture=!form.startsAt||new Date(form.startsAt).getTime()>Date.now();const canEditBeforeReception=!form.organizationShared&&form.responseCount===0&&(form.status==='draft'||form.status==='private'||(form.status==='scheduled'&&startsInFuture));return <article className="card" key={form.id}><div><span className={`badge status-${full?'closed':form.status??'draft'}`}>{statusLabel}</span><h2>{form.title}</h2><small>{form.closesAt?`마감 ${new Intl.DateTimeFormat('ko-KR',{dateStyle:'medium',timeStyle:'short'}).format(new Date(form.closesAt))}${remaining>0?` · ${Math.ceil(remaining/3600000)}시간 남음`:''}`:form.id}</small></div><strong>{form.responseCount}<small>명 응답{form.maxResponses?` / ${form.maxResponses}명`:''}</small></strong><div className="manage-actions"><button className="primary" onClick={() => void loadResults(form.id)}>결과 보기</button>{canEditBeforeReception&&<button type="button" onClick={() => void editOwnedForm(form)}><FileText size={16}/> 폼 수정</button>}<button type="button" onClick={() => void duplicateOwnedForm(form)}><Copy size={16}/> 복제 후 편집</button><button type="button" onClick={() => void toggleFormReception(form)}>{form.status==='open'?'접수 중지':'접수 시작'}</button><button type="button" onClick={() => void editFormCloseTime(form)}><CalendarClock size={16}/> 마감 수정</button><button type="button" aria-expanded={shareOpen} aria-controls={`share-${form.id}`} onClick={() => void toggleManageShare(form)}><QrCode size={16}/> 공유</button><button className="danger" disabled={deletingFormId===form.id} onClick={() => void deleteOwnedForm(form)}>{deletingFormId===form.id?<LoaderCircle className="spin" size={16}/>:<Trash2 size={16}/>} 삭제</button></div>{shareOpen&&<div className="manage-share-panel" id={`share-${form.id}`}><div className="manage-share-qr">{manageQr?<div className="qr-copy-wrap"><img src={manageQr} alt={`${form.title} 공개 링크 QR 코드`}/><button type="button" className={`qr-copy-button ${copiedManageQrFormId===form.id?'copied':''}`} onClick={() => void copyManageQr(form.id)} aria-label={`${form.title} QR 이미지 복사`}>{copiedManageQrFormId===form.id?<CheckCircle2/>:<Copy/>}</button></div>:<LoaderCircle className="spin"/>}</div><div className="manage-share-info"><span>공개 링크</span><div className="copy"><input readOnly value={publicLink} aria-label={`${form.title} 공개 링크`}/><button type="button" onClick={() => void copyManageLink(form)} aria-label="공개 링크 복사">{copiedFormId===form.id?'복사됨':<Copy size={17}/>}</button></div><div className="manage-share-links"><a className="primary link" href={formPreviewLink} target="_blank" rel="noreferrer"><Eye size={16}/> 응답 화면 미리보기</a>{manageQr&&<a className="link" href={manageQr} download={`${form.title.replace(/[\\/:*?"<>|]/g,'_')}_QR.png`}><Download size={16}/> QR 저장</a>}</div></div></div>}</article>}):<div className="empty card">아직 배포한 폼이 없습니다.<button className="primary" onClick={startNewForm}>첫 폼 만들기</button></div>}</div>}</section>}
-    </main>
-  </div>
+        {page === 'edit' && (
+          <section>
+            <Title
+              step="2"
+              title={
+                creationMode === 'manual'
+                  ? '폼 내용을 직접 입력하세요'
+                  : 'AI가 만든 폼을 확인하세요'
+              }
+              text={
+                creationMode === 'manual'
+                  ? '기본 정보와 질문을 입력한 뒤 디자인·배포 설정으로 이동합니다.'
+                  : '문서에서 확실하지 않은 내용은 검토 항목으로 표시합니다.'
+              }
+            />
+            {reviewNotes.length > 0 && (
+              <div className="notice warn">
+                <b>사람이 확인할 항목</b>
+                {reviewNotes.map((note) => (
+                  <span key={note}>• {note}</span>
+                ))}
+              </div>
+            )}
+            <div className="grid edit">
+              <div>
+                <div className="card form-fields">
+                  <h2>폼 기본 정보</h2>
+                  <label>
+                    폼 제목
+                    <input
+                      value={program.programName}
+                      onChange={(e) =>
+                        setProgram({ ...program, programName: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    설명
+                    <textarea
+                      value={program.description}
+                      onChange={(e) =>
+                        setProgram({ ...program, description: e.target.value })
+                      }
+                    />
+                  </label>
+                  <div className="grid two">
+                    <label>
+                      대상
+                      <input
+                        value={program.target}
+                        onChange={(e) =>
+                          setProgram({ ...program, target: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      기간
+                      <input
+                        value={program.period}
+                        onChange={(e) =>
+                          setProgram({ ...program, period: e.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+                <QuestionSectionsEditor
+                  questions={questions}
+                  setQuestions={setQuestions}
+                  formId={formId}
+                  user={user}
+                  draggedQuestionId={draggedQuestionId}
+                  dragOverQuestionId={dragOverQuestionId}
+                  reorderAnnouncement={reorderAnnouncement}
+                  onDragStart={(id) => {
+                    setDraggedQuestionId(id)
+                    setDragOverQuestionId(id)
+                  }}
+                  onDragMove={(clientX, clientY) => {
+                    const target = document
+                      .elementFromPoint(clientX, clientY)
+                      ?.closest<HTMLElement>('[data-question-id]')
+                    const targetId = Number(target?.dataset.questionId)
+                    if (Number.isFinite(targetId))
+                      setDragOverQuestionId(targetId)
+                  }}
+                  onDragEnd={finishQuestionDrag}
+                  onDragCancel={() => {
+                    setDraggedQuestionId(null)
+                    setDragOverQuestionId(null)
+                  }}
+                  onMove={moveQuestion}
+                  onDuplicate={duplicateQuestion}
+                />
+                {formSettings.quiz.enabled && (
+                  <QuizConfiguration
+                    questions={questions}
+                    onChange={setQuestions}
+                  />
+                )}
+              </div>
+              <aside className="card preview">
+                <h2>미리보기</h2>
+                <FormBody
+                  program={program}
+                  questions={questions}
+                  theme={theme}
+                  branding={formSettings.branding}
+                />
+              </aside>
+            </div>
+            <div className="actions between">
+              <button onClick={() => setPage('create')}>자료 다시 선택</button>
+              <button
+                className="primary"
+                disabled={routingWarnings(questions).length > 0}
+                onClick={() => setPage('publish')}
+              >
+                디자인·배포 설정
+              </button>
+            </div>
+          </section>
+        )}
+        {page === 'publish' && (
+          <section>
+            <Title
+              step="3"
+              title="디자인과 참여 정책을 설정하세요"
+              text="참여 대상, 접수 일정, 제출 후 동작을 정한 뒤 공개 링크를 생성합니다."
+            />
+            <div className="grid two">
+              <div className="card">
+                <h2>
+                  <Palette size={20} /> 폼 디자인
+                </h2>
+                <div
+                  className="themes"
+                  role="group"
+                  aria-label="폼 디자인 선택"
+                >
+                  {selectableThemes.map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      className={`theme-option ${item.id} ${theme === item.id ? 'selected' : ''}`}
+                      aria-pressed={theme === item.id}
+                      onClick={() => setTheme(item.id)}
+                    >
+                      <span className="theme-swatch">
+                        <ThemeIcon theme={item.id} />
+                      </span>
+                      <span className="theme-copy">
+                        <b>{item.label}</b>
+                        <small>{item.description}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {theme === 'green' && (
+                  <div className="basic-color-customizer">
+                    <div>
+                      <Palette aria-hidden="true" />
+                      <span>
+                        <b>기본 디자인 색상</b>
+                        <small>
+                          원하는 강조색과 배경색을 자유롭게 선택하세요.
+                        </small>
+                      </span>
+                    </div>
+                    <label>
+                      강조색
+                      <input
+                        type="color"
+                        value={formSettings.branding.accentColor}
+                        onChange={(event) =>
+                          setFormSettings((current) => ({
+                            ...current,
+                            branding: {
+                              ...current.branding,
+                              accentColor: event.target.value
+                            }
+                          }))
+                        }
+                      />
+                      <code>{formSettings.branding.accentColor}</code>
+                    </label>
+                    <label>
+                      배경색
+                      <input
+                        type="color"
+                        value={formSettings.branding.backgroundColor}
+                        onChange={(event) =>
+                          setFormSettings((current) => ({
+                            ...current,
+                            branding: {
+                              ...current.branding,
+                              backgroundColor: event.target.value
+                            }
+                          }))
+                        }
+                      />
+                      <code>{formSettings.branding.backgroundColor}</code>
+                    </label>
+                  </div>
+                )}
+                <FormBody
+                  program={program}
+                  questions={questions}
+                  theme={theme}
+                  branding={formSettings.branding}
+                />
+              </div>
+              <div className="card publish-card">
+                <h2>공개·응답 설정</h2>
+                {creationMode === 'ai' && (
+                  <div className="ai-settings-note">
+                    <WandSparkles />
+                    <span>
+                      <b>AI 추천 설정이 적용되었습니다</b>
+                      <small>
+                        문서에서 찾은 대상·일정·응답 방식과 공유 정보를 바탕으로
+                        채웠습니다. 배포 전에 확인하고 자유롭게 수정할 수
+                        있습니다.
+                      </small>
+                    </span>
+                  </div>
+                )}
+                <FormPolicyEditor
+                  value={formSettings}
+                  previewTitle={program.programName}
+                  previewDescription={program.description}
+                  onChange={setFormSettings}
+                  onCollaborator={
+                    published
+                      ? async (email, role) =>
+                          setFormCollaborator(formId, email, role)
+                      : undefined
+                  }
+                />
+                <label>
+                  데이터 보존 기준일
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </label>
+                <button
+                  className="primary wide"
+                  onClick={() => void publish()}
+                  disabled={publishLoading}
+                >
+                  {publishLoading ? (
+                    <LoaderCircle className="spin" />
+                  ) : (
+                    <Send />
+                  )}{' '}
+                  설정 저장하고 배포하기
+                </button>
+                {message && <Notice text={message} />}{' '}
+                {published && (
+                  <div className="share">
+                    <CheckCircle2 />
+                    <h3>배포 완료</h3>
+                    {qr ? <img src={qr} alt="공개 폼 QR 코드" /> : <QrCode />}
+                    <div className="copy">
+                      <input readOnly value={shareLink} />
+                      <button
+                        onClick={() =>
+                          void navigator.clipboard.writeText(shareLink)
+                        }
+                        aria-label="공개 링크 복사"
+                      >
+                        <Copy />
+                      </button>
+                    </div>
+                    <div className="share-action-grid">
+                      <a
+                        className="primary link"
+                        href={previewLink}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <Eye size={17} /> 미리보기
+                      </a>
+                      <button
+                        onClick={() =>
+                          void sharePublicForm(
+                            program.programName,
+                            shareLink
+                          ).catch(() =>
+                            setMessage(
+                              '공유를 완료하지 못했습니다. 링크를 직접 복사해 주세요.'
+                            )
+                          )
+                        }
+                      >
+                        <Send size={17} /> 공유
+                      </button>
+                      {qr && (
+                        <button
+                          type="button"
+                          className={publishedQrCopied ? 'copied-action' : ''}
+                          onClick={() => void copyPublishedQr()}
+                        >
+                          {publishedQrCopied ? (
+                            <CheckCircle2 size={17} />
+                          ) : (
+                            <Copy size={17} />
+                          )}
+                          {publishedQrCopied
+                            ? 'QR 이미지 복사됨'
+                            : 'QR 이미지 복사'}
+                        </button>
+                      )}
+                      {qr && (
+                        <a
+                          className="link"
+                          href={qr}
+                          download={`${program.programName.replace(/[\\/:*?"<>|]/g, '_')}_QR.png`}
+                        >
+                          <Download size={17} /> QR PNG
+                        </a>
+                      )}
+                      <a
+                        className="link"
+                        href={`mailto:?subject=${encodeURIComponent(formSettings.branding.shareTitle || program.programName)}&body=${encodeURIComponent(`${formSettings.branding.shareDescription || program.description}\n${shareLink}`)}`}
+                      >
+                        <Send size={17} /> 이메일
+                      </a>
+                      <button
+                        onClick={() =>
+                          void navigator.clipboard.writeText(
+                            `<iframe src="${shareLink}" title="${program.programName}" width="100%" height="720" loading="lazy"></iframe>`
+                          )
+                        }
+                      >
+                        <Copy size={17} /> 삽입 코드
+                      </button>
+                      <button
+                        onClick={() =>
+                          void copyPrefilledLink().catch(() =>
+                            setMessage('미리 채운 링크를 복사하지 못했습니다.')
+                          )
+                        }
+                      >
+                        <Copy size={17} /> 미리 채운 링크
+                      </button>
+                      {formSettings.submission.showPublicResults && (
+                        <button
+                          onClick={() =>
+                            void navigator.clipboard
+                              .writeText(`${shareLink}&results=1`)
+                              .then(() =>
+                                setMessage(
+                                  '익명 결과 공개 링크를 복사했습니다.'
+                                )
+                              )
+                          }
+                        >
+                          <BarChart3 size={17} /> 결과 공개 링크
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="actions between">
+              <button onClick={() => setPage('edit')}>폼 수정</button>
+              <div className="actions-inline">
+                <button onClick={openSampleResults}>
+                  <BarChart3 /> 샘플 결과
+                </button>
+                <button
+                  className="primary"
+                  onClick={() => void loadResults()}
+                  disabled={resultLoading}
+                >
+                  실제 응답 결과
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+        {page === 'results' && (
+          <ResultsDashboard
+            title={program.programName}
+            loading={resultLoading}
+            responses={responses}
+            questions={questions}
+            summaries={summaries}
+            message={message}
+            sample={sampleResults}
+            initialPage={responsePage}
+            onBack={() => setPage(resultsReturnPage)}
+            onRefresh={() =>
+              sampleResults ? openSampleResults() : void loadResults()
+            }
+            onQuery={
+              sampleResults
+                ? undefined
+                : async (query) => queryFormResponses(formId, query)
+            }
+            onManage={
+              sampleResults
+                ? undefined
+                : async (ids, action) =>
+                    manageFormResponses(formId, ids, action)
+            }
+            onLoadExport={
+              sampleResults
+                ? undefined
+                : async (query) =>
+                    (await queryFormResponses(formId, query, true)).items
+            }
+            onAnalyze={
+              sampleResults
+                ? undefined
+                : async (query) => {
+                    const items = (
+                      await queryFormResponses(formId, query, true)
+                    ).items
+                    const topics = await summarizeResponses(
+                      items.flatMap((item) =>
+                        Object.values(item.answers)
+                          .filter((value) => typeof value === 'string')
+                          .map(String)
+                      )
+                    )
+                    if (user)
+                      await saveAnalysisRecord({
+                        formId,
+                        owner: user,
+                        stats: {
+                          applicants: items.length,
+                          participants: items.length,
+                          satisfactionResponses: 0,
+                          satisfactionScores: []
+                        },
+                        topics,
+                        surveyEndDate: endDate
+                      })
+                    return topics
+                  }
+            }
+            onExportExcel={(items, exportQuestions) =>
+              void exportResponsesToExcel(
+                program.programName,
+                exportQuestions,
+                items,
+                analyzeStoredResponses(exportQuestions, items)
+              )
+            }
+          />
+        )}
+        {page === 'manage' && ownedForms.length > 0 && (
+          <section className="card version-history-panel">
+            <div className="row">
+              <div>
+                <span className="eyebrow">VERSION HISTORY</span>
+                <h2>폼 수정 기록</h2>
+              </div>
+              <div className="version-form-buttons">
+                {ownedForms.map((form) => (
+                  <button
+                    key={form.id}
+                    onClick={() => void openVersionHistory(form)}
+                  >
+                    {form.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {versionHistoryTitle && (
+              <div>
+                <h3>{versionHistoryTitle}</h3>
+                {versionHistory.length ? (
+                  <ol>
+                    {versionHistory.map((version) => (
+                      <li key={version.version}>
+                        <strong>버전 {version.version}</strong>
+                        <span>
+                          {version.questionCount}개 질문 ·{' '}
+                          {version.createdAt
+                            ? new Intl.DateTimeFormat('ko-KR', {
+                                dateStyle: 'medium',
+                                timeStyle: 'short'
+                              }).format(new Date(version.createdAt))
+                            : '저장 시각 없음'}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p>저장된 버전 기록이 없습니다.</p>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+        {page === 'manage' && deletedForms.length > 0 && (
+          <section className="card trash-panel">
+            <div className="trash-heading">
+              <div>
+                <span className="eyebrow">TRASH</span>
+                <h2>휴지통</h2>
+                <p>삭제한 폼과 응답은 복구 전까지 공개되지 않습니다.</p>
+              </div>
+              <button
+                type="button"
+                className="danger"
+                disabled={emptyingTrash}
+                onClick={() => void emptyTrash()}
+              >
+                {emptyingTrash ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <Trash2 size={16} />
+                )}{' '}
+                휴지통 비우기
+              </button>
+            </div>
+            {deletedForms.map((form) => (
+              <div className="row trash-item" key={form.id}>
+                <span>
+                  <b>{form.title}</b>
+                  <small>
+                    {form.deletedAt
+                      ? new Intl.DateTimeFormat('ko-KR', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short'
+                        }).format(new Date(form.deletedAt))
+                      : '삭제 시각 없음'}
+                  </small>
+                </span>
+                <div className="trash-item-actions">
+                  <button onClick={() => void restoreDeletedForm(form)}>
+                    <RefreshCcw /> 복구
+                  </button>
+                  <button
+                    type="button"
+                    className="trash-delete-icon danger"
+                    aria-label={`${form.title} 영구 삭제`}
+                    title="휴지통에서 영구 삭제"
+                    disabled={deletingFormId === form.id}
+                    onClick={() => void permanentlyDeleteDeletedForm(form)}
+                  >
+                    {deletingFormId === form.id ? (
+                      <LoaderCircle className="spin" size={16} />
+                    ) : (
+                      <Trash2 size={17} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+        {page === 'manage' && (
+          <section>
+            <Title
+              step=""
+              title="내가 만든 폼"
+              text="폼별 접수 상태, 응답 수와 공유 링크를 관리합니다."
+            />
+            {message && <Notice text={message} />}{' '}
+            {resultLoading ? (
+              <div className="center">
+                <LoaderCircle className="spin" />
+              </div>
+            ) : (
+              <div className="manage-list">
+                {ownedForms.length ? (
+                  ownedForms.map((form) => {
+                    const publicLink = `${location.origin}/?form=${encodeURIComponent(form.publicSlug || form.id)}`
+                    const formPreviewLink = `${publicLink}&preview=1`
+                    const shareOpen = shareFormId === form.id
+                    const full = Boolean(
+                      form.maxResponses &&
+                        form.responseCount >= form.maxResponses
+                    )
+                    const statusLabel = full
+                      ? '최대 인원 마감'
+                      : {
+                          draft: '초안',
+                          scheduled: '시작 전',
+                          open: '접수 중',
+                          paused: '일시중지',
+                          closed: '마감',
+                          private: '비공개'
+                        }[form.status ?? 'draft']
+                    const remaining = form.closesAt
+                      ? new Date(form.closesAt).getTime() - Date.now()
+                      : 0
+                    const startsInFuture =
+                      !form.startsAt ||
+                      new Date(form.startsAt).getTime() > Date.now()
+                    const canEditBeforeReception =
+                      !form.organizationShared &&
+                      form.responseCount === 0 &&
+                      (form.status === 'draft' ||
+                        form.status === 'private' ||
+                        (form.status === 'scheduled' && startsInFuture))
+                    return (
+                      <article className="card" key={form.id}>
+                        <div>
+                          <span
+                            className={`badge status-${full ? 'closed' : (form.status ?? 'draft')}`}
+                          >
+                            {statusLabel}
+                          </span>
+                          <h2>{form.title}</h2>
+                          <small>
+                            {form.closesAt
+                              ? `마감 ${new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(form.closesAt))}${remaining > 0 ? ` · ${Math.ceil(remaining / 3600000)}시간 남음` : ''}`
+                              : form.id}
+                          </small>
+                        </div>
+                        <strong>
+                          {form.responseCount}
+                          <small>
+                            명 응답
+                            {form.maxResponses
+                              ? ` / ${form.maxResponses}명`
+                              : ''}
+                          </small>
+                        </strong>
+                        <div className="manage-actions">
+                          <button
+                            className="primary"
+                            onClick={() => void loadResults(form.id)}
+                          >
+                            결과 보기
+                          </button>
+                          {canEditBeforeReception && (
+                            <button
+                              type="button"
+                              onClick={() => void editOwnedForm(form)}
+                            >
+                              <FileText size={16} /> 폼 수정
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void duplicateOwnedForm(form)}
+                          >
+                            <Copy size={16} /> 복제 후 편집
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void toggleFormReception(form)}
+                          >
+                            {form.status === 'open' ? '접수 중지' : '접수 시작'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void editFormCloseTime(form)}
+                          >
+                            <CalendarClock size={16} /> 마감 수정
+                          </button>
+                          <button
+                            type="button"
+                            aria-expanded={shareOpen}
+                            aria-controls={`share-${form.id}`}
+                            onClick={() => void toggleManageShare(form)}
+                          >
+                            <QrCode size={16} /> 공유
+                          </button>
+                          <button
+                            className="danger"
+                            disabled={deletingFormId === form.id}
+                            onClick={() => void deleteOwnedForm(form)}
+                          >
+                            {deletingFormId === form.id ? (
+                              <LoaderCircle className="spin" size={16} />
+                            ) : (
+                              <Trash2 size={16} />
+                            )}{' '}
+                            삭제
+                          </button>
+                        </div>
+                        {shareOpen && (
+                          <div
+                            className="manage-share-panel"
+                            id={`share-${form.id}`}
+                          >
+                            <div className="manage-share-qr">
+                              {manageQr ? (
+                                <img
+                                  src={manageQr}
+                                  alt={`${form.title} 공개 링크 QR 코드`}
+                                />
+                              ) : (
+                                <LoaderCircle className="spin" />
+                              )}
+                            </div>
+                            <div className="manage-share-info">
+                              <span>공개 링크</span>
+                              <div className="copy">
+                                <input
+                                  readOnly
+                                  value={publicLink}
+                                  aria-label={`${form.title} 공개 링크`}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void copyManageLink(form)}
+                                  aria-label="공개 링크 복사"
+                                >
+                                  {copiedFormId === form.id ? (
+                                    '복사됨'
+                                  ) : (
+                                    <Copy size={17} />
+                                  )}
+                                </button>
+                              </div>
+                              <div className="manage-share-links">
+                                <a
+                                  className="primary link"
+                                  href={formPreviewLink}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <Eye size={16} /> 응답 화면 미리보기
+                                </a>
+                                {manageQr && (
+                                  <button
+                                    type="button"
+                                    className={
+                                      copiedManageQrFormId === form.id
+                                        ? 'copied-action'
+                                        : ''
+                                    }
+                                    onClick={() => void copyManageQr(form.id)}
+                                  >
+                                    {copiedManageQrFormId === form.id ? (
+                                      <CheckCircle2 size={16} />
+                                    ) : (
+                                      <Copy size={16} />
+                                    )}
+                                    {copiedManageQrFormId === form.id
+                                      ? 'QR 이미지 복사됨'
+                                      : 'QR 이미지 복사'}
+                                  </button>
+                                )}
+                                {manageQr && (
+                                  <a
+                                    className="link"
+                                    href={manageQr}
+                                    download={`${form.title.replace(/[\\/:*?"<>|]/g, '_')}_QR.png`}
+                                  >
+                                    <Download size={16} /> QR 저장
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    )
+                  })
+                ) : (
+                  <div className="empty card">
+                    아직 배포한 폼이 없습니다.
+                    <button className="primary" onClick={startNewForm}>
+                      첫 폼 만들기
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+      </main>
+    </div>
+  )
 }
 
-function Login({publicForm=false,loadingProvider,error,initialEmail,completingEmailLink,onLogin,onStartNewEmailLink}:{
-  publicForm?: boolean
-  loadingProvider: LoginProvider | null
-  error: string
-  initialEmail: string
-  completingEmailLink: boolean
-  onLogin: (provider: LoginProvider, email?: string) => Promise<boolean>
-  onStartNewEmailLink: () => void
+function Login({
+  publicForm = false,
+  loadingProvider,
+  error,
+  initialEmail,
+  completingEmailLink,
+  onLogin,
+  onStartNewEmailLink,
+}: {
+  publicForm?: boolean;
+  loadingProvider: LoginProvider | null;
+  error: string;
+  initialEmail: string;
+  completingEmailLink: boolean;
+  onLogin: (provider: LoginProvider, email?: string) => Promise<boolean>;
+  onStartNewEmailLink: () => void;
 }) {
-  const [email, setEmail] = useState(initialEmail)
-  const [sentEmail, setSentEmail] = useState('')
-  const [cooldown, setCooldown] = useState(0)
-  const loading = loadingProvider !== null
+  const [email, setEmail] = useState(initialEmail);
+  const [sentEmail, setSentEmail] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+  const loading = loadingProvider !== null;
 
   useEffect(() => {
-    if (cooldown <= 0) return
-    const timer = window.setInterval(() => setCooldown((seconds) => Math.max(0, seconds - 1)), 1000)
-    return () => window.clearInterval(timer)
-  }, [cooldown])
+    if (cooldown <= 0) return;
+    const timer = window.setInterval(
+      () => setCooldown((seconds) => Math.max(0, seconds - 1)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [cooldown]);
 
   const submitEmail = async () => {
-    if (!completingEmailLink && cooldown > 0) return
-    const succeeded = await onLogin('email', email)
+    if (!completingEmailLink && cooldown > 0) return;
+    const succeeded = await onLogin("email", email);
     if (succeeded && !completingEmailLink) {
-      setSentEmail(email.trim())
-      setCooldown(60)
+      setSentEmail(email.trim());
+      setCooldown(60);
     }
-  }
+  };
 
-  const emailButtonText = loadingProvider === 'email'
-    ? '처리 중...'
-    : completingEmailLink
-      ? '이메일 확인 후 로그인'
-      : cooldown > 0
-        ? `${cooldown}초 후 재전송`
-        : sentEmail
-          ? '로그인 링크 다시 받기'
-          : '로그인 링크 받기'
+  const emailButtonText =
+    loadingProvider === "email"
+      ? "처리 중..."
+      : completingEmailLink
+        ? "이메일 확인 후 로그인"
+        : cooldown > 0
+          ? `${cooldown}초 후 재전송`
+          : sentEmail
+            ? "로그인 링크 다시 받기"
+            : "로그인 링크 받기";
 
-  return <main className="login"><div className="login-university-visual" aria-hidden="true"><img src={kangnamPromotionBar} alt=""/><UniversityPatternBand/></div><div className="login-card">
-    <div className="logo"><img src={kangnamUniversityLogo} alt=""/></div><span className="eyebrow">DAEPUL FORM</span>
-    <h1>{publicForm?<>폼에 참여하려면<br/>로그인해 주세요</>:<>자료 한 번 올리면<br/>폼부터 결과까지</>}</h1>
-    <p>{publicForm?'로그인 후 요청한 폼으로 바로 이동합니다. 현재 공개 링크는 그대로 유지됩니다.':'첨부문서를 AI가 읽어 알맞은 폼을 만들고, 실제 응답을 자동으로 집계합니다.'}</p>
-    {!completingEmailLink && <div className="login-options"><button className="social-login google" disabled={loading||!firebaseConfigured} onClick={()=>void onLogin('google')}>{loadingProvider==='google'?<LoaderCircle className="spin"/>:<span className="login-mark">G</span>} Google로 로그인</button></div>}
-    {!completingEmailLink && <div className="login-divider"><span>또는 이메일</span></div>}
-    <form className="email-login" onSubmit={(event)=>{event.preventDefault();void submitEmail()}}>
-      {completingEmailLink && <div className="email-link-heading"><b>로그인을 마무리해 주세요</b><span>보안을 위해 링크를 받은 이메일을 다시 입력해 주세요.</span></div>}
-      <label>{completingEmailLink ? '로그인 링크를 받은 이메일' : '이메일'}<input type="email" autoComplete="email" value={email} onChange={(event)=>setEmail(event.target.value)} disabled={loading} required/></label>
-      {!completingEmailLink && <span className="email-login-note">처음 이용해도 이메일 확인 후 바로 시작할 수 있습니다.</span>}
-      <button className="email-login-button" disabled={loading||!firebaseConfigured||(!completingEmailLink&&cooldown>0)}>{loadingProvider==='email'?<LoaderCircle className="spin"/>:completingEmailLink?<LogIn/>:<Send/>} {emailButtonText}</button>
-    </form>
-    {sentEmail && !error && <div className="email-link-sent"><b>로그인 링크를 보냈습니다.</b><span>{sentEmail}의 받은편지함을 확인해 주세요.</span></div>}
-    {error&&<Notice text={error}/>}
-    {completingEmailLink && <button className="email-link-reset" type="button" onClick={onStartNewEmailLink}>새 로그인 링크 받기</button>}
-    <small>{publicForm?'Google 계정 또는 이메일로 로그인해 주세요.':'폼 제작자와 응답자 모두 로그인이 필요합니다.'}</small>
-  </div></main>
+  return (
+    <main className="login">
+      <div className="login-university-visual" aria-hidden="true">
+        <img src={kangnamPromotionBar} alt="" />
+        <UniversityPatternBand />
+      </div>
+      <div className="login-card">
+        <div className="logo">
+          <img src={kangnamUniversityLogo} alt="" />
+        </div>
+        <span className="eyebrow">DAEPUL FORM</span>
+        <h1>
+          {publicForm ? (
+            <>
+              폼에 참여하려면
+              <br />
+              로그인해 주세요
+            </>
+          ) : (
+            <>
+              자료 한 번 올리면
+              <br />
+              폼부터 결과까지
+            </>
+          )}
+        </h1>
+        <p>
+          {publicForm
+            ? "로그인 후 요청한 폼으로 바로 이동합니다. 현재 공개 링크는 그대로 유지됩니다."
+            : "첨부문서를 AI가 읽어 알맞은 폼을 만들고, 실제 응답을 자동으로 집계합니다."}
+        </p>
+        {!completingEmailLink && (
+          <div className="login-options">
+            <button
+              className="social-login google"
+              disabled={loading || !firebaseConfigured}
+              onClick={() => void onLogin("google")}
+            >
+              {loadingProvider === "google" ? (
+                <LoaderCircle className="spin" />
+              ) : (
+                <span className="login-mark">G</span>
+              )}{" "}
+              Google로 로그인
+            </button>
+          </div>
+        )}
+        {!completingEmailLink && (
+          <div className="login-divider">
+            <span>또는 이메일</span>
+          </div>
+        )}
+        <form
+          className="email-login"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitEmail();
+          }}
+        >
+          {completingEmailLink && (
+            <div className="email-link-heading">
+              <b>로그인을 마무리해 주세요</b>
+              <span>보안을 위해 링크를 받은 이메일을 다시 입력해 주세요.</span>
+            </div>
+          )}
+          <label>
+            {completingEmailLink ? "로그인 링크를 받은 이메일" : "이메일"}
+            <input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              disabled={loading}
+              required
+            />
+          </label>
+          {!completingEmailLink && (
+            <span className="email-login-note">
+              처음 이용해도 이메일 확인 후 바로 시작할 수 있습니다.
+            </span>
+          )}
+          <button
+            className="email-login-button"
+            disabled={
+              loading ||
+              !firebaseConfigured ||
+              (!completingEmailLink && cooldown > 0)
+            }
+          >
+            {loadingProvider === "email" ? (
+              <LoaderCircle className="spin" />
+            ) : completingEmailLink ? (
+              <LogIn />
+            ) : (
+              <Send />
+            )}{" "}
+            {emailButtonText}
+          </button>
+        </form>
+        {sentEmail && !error && (
+          <div className="email-link-sent">
+            <b>로그인 링크를 보냈습니다.</b>
+            <span>{sentEmail}의 받은편지함을 확인해 주세요.</span>
+          </div>
+        )}
+        {error && <Notice text={error} />}
+        {completingEmailLink && (
+          <button
+            className="email-link-reset"
+            type="button"
+            onClick={onStartNewEmailLink}
+          >
+            새 로그인 링크 받기
+          </button>
+        )}
+        <small>
+          {publicForm
+            ? "Google 계정 또는 이메일로 로그인해 주세요."
+            : "폼 제작자와 응답자 모두 로그인이 필요합니다."}
+        </small>
+      </div>
+    </main>
+  );
 }
 
 export function QuestionSectionsEditor({
