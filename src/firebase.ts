@@ -584,49 +584,85 @@ export type GoogleSheetsConnectionStatus = {
 
 const googleSheetsAppsScriptUrl=import.meta.env.VITE_GOOGLE_SHEETS_APPS_SCRIPT_URL
 
+function validGoogleSheetsEndpoint(value:string){
+  try{
+    const url=new URL(value)
+    return url.protocol==='https:'
+      &&url.hostname==='script.google.com'
+      &&/^\/macros\/s\/[^/]+\/exec$/.test(url.pathname)
+  }catch{
+    return false
+  }
+}
+
+function googleSheetsEndpoint(overrideUrl=''){
+  const override=overrideUrl.trim()
+  if(validGoogleSheetsEndpoint(override))return override
+  return validGoogleSheetsEndpoint(googleSheetsAppsScriptUrl)?googleSheetsAppsScriptUrl:''
+}
+
 async function requestGoogleSheetsAppsScript(
   action:'status'|'connect'|'disconnect',
   formId:string,
+  overrideUrl='',
 ):Promise<GoogleSheetsConnectionStatus>{
-  if(!googleSheetsAppsScriptUrl)throw Object.assign(
+  const endpoint=googleSheetsEndpoint(overrideUrl)
+  if(!endpoint)throw Object.assign(
     new Error('Google 스프레드시트 운영 설정이 필요합니다.'),
     {code:'apps-script/not-configured'},
   )
   const user=auth?.currentUser
   if(!user)throw Object.assign(new Error('제작자 로그인이 필요합니다.'),{code:'apps-script/unauthenticated'})
-  const response=await fetch(googleSheetsAppsScriptUrl,{
-    method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify({action,formId,idToken:await user.getIdToken()}),
-  })
-  if(!response.ok)throw Object.assign(new Error(`Apps Script HTTP ${response.status}`),{code:'apps-script/unavailable'})
-  const result=await response.json() as {
-    ok?:boolean
-    data?:GoogleSheetsConnectionStatus
-    error?:string
-    code?:string
+  const idToken=await user.getIdToken()
+  let lastError:unknown
+  for(let attempt=0;attempt<2;attempt+=1){
+    const controller=new AbortController()
+    const timeout=window.setTimeout(()=>controller.abort(),15_000)
+    try{
+      const response=await fetch(endpoint,{
+        method:'POST',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify({action,formId,idToken}),
+        signal:controller.signal,
+      })
+      if(!response.ok)throw Object.assign(new Error(`Apps Script HTTP ${response.status}`),{code:'apps-script/unavailable'})
+      const result=await response.json() as {
+        ok?:boolean
+        data?:GoogleSheetsConnectionStatus
+        error?:string
+        code?:string
+      }
+      if(!result.ok||!result.data)throw Object.assign(
+        new Error(result.error||'Google 스프레드시트 연결 요청에 실패했습니다.'),
+        {code:result.code||'apps-script/failed'},
+      )
+      return result.data
+    }catch(error){
+      lastError=error
+      const code=typeof error==='object'&&error!==null&&'code' in error?String(error.code):''
+      if(attempt>0||!['','apps-script/unavailable'].includes(code))throw error
+      await new Promise(resolve=>window.setTimeout(resolve,350))
+    }finally{
+      window.clearTimeout(timeout)
+    }
   }
-  if(!result.ok||!result.data)throw Object.assign(
-    new Error(result.error||'Google 스프레드시트 연결 요청에 실패했습니다.'),
-    {code:result.code||'apps-script/failed'},
-  )
-  return result.data
+  throw lastError
 }
 
-export function googleSheetsAppsScriptConfigured(){
-  return Boolean(googleSheetsAppsScriptUrl)
+export function googleSheetsAppsScriptConfigured(overrideUrl=''){
+  return Boolean(googleSheetsEndpoint(overrideUrl))
 }
 
-export function getGoogleSheetsConnection(formId:string){
-  return requestGoogleSheetsAppsScript('status',formId)
+export function getGoogleSheetsConnection(formId:string,overrideUrl=''){
+  return requestGoogleSheetsAppsScript('status',formId,overrideUrl)
 }
 
-export function createAndConnectGoogleSpreadsheet(formId:string){
-  return requestGoogleSheetsAppsScript('connect',formId)
+export function createAndConnectGoogleSpreadsheet(formId:string,overrideUrl=''){
+  return requestGoogleSheetsAppsScript('connect',formId,overrideUrl)
 }
 
-export function disconnectGoogleSheets(formId:string){
-  return requestGoogleSheetsAppsScript('disconnect',formId)
+export function disconnectGoogleSheets(formId:string,overrideUrl=''){
+  return requestGoogleSheetsAppsScript('disconnect',formId,overrideUrl)
 }
 
 export async function getFormDeliveryStatus(formId: string): Promise<Array<{

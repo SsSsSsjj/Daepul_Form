@@ -40,9 +40,19 @@ describe('GoogleSheetsConnector',()=>{
     })
     render(<GoogleSheetsConnector formId="form-1"/>)
     fireEvent.click(await screen.findByRole('button',{name:/응답 시트 만들고 연결/}))
-    expect(firebaseMocks.connect).toHaveBeenCalledWith('form-1')
+    expect(firebaseMocks.connect).toHaveBeenCalledWith('form-1','')
     expect(await screen.findByText('진로 설문 응답')).toBeInTheDocument()
     expect(screen.getByText(/약 1분 간격/)).toBeInTheDocument()
+  })
+
+  it('uses a form-specific Apps Script URL when the global URL is unavailable',async()=>{
+    firebaseMocks.configured.mockReturnValue(true)
+    firebaseMocks.connect.mockResolvedValue({status:'connected',spreadsheetTitle:'전용 응답 시트'})
+    const endpoint='https://script.google.com/macros/s/deployment-id/exec'
+    render(<GoogleSheetsConnector formId="form-1" appsScriptUrl={endpoint}/>)
+    fireEvent.click(await screen.findByRole('button',{name:/응답 시트 만들고 연결/}))
+    expect(firebaseMocks.configured).toHaveBeenCalledWith(endpoint)
+    expect(firebaseMocks.connect).toHaveBeenCalledWith('form-1',endpoint)
   })
 
   it('shows a setup message before the operator configures Apps Script',()=>{

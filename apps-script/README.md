@@ -16,6 +16,10 @@ Firebase Blaze 요금제나 Cloud Functions 없이, 운영 계정의 Apps Script
    - 액세스 권한: 모든 사용자
 6. 배포 URL을 GitHub Actions 비밀 `VITE_GOOGLE_SHEETS_APPS_SCRIPT_URL`로 저장합니다.
 
+공통 GitHub 비밀값을 사용할 수 없는 환경에서는 폼 편집 화면의
+`개발자용 웹훅 설정 > Apps Script 웹앱 URL`에 같은 배포 URL을 저장할 수 있습니다.
+`Code.gs`를 변경한 뒤에는 Apps Script의 웹 앱 배포를 새 버전으로 갱신해야 합니다.
+
 ## 제작자 사용 흐름
 
 1. 폼을 배포합니다.
