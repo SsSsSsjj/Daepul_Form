@@ -10,6 +10,8 @@ import {
   getDocs,
   getFirestore,
   query,
+  runTransaction,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where,
@@ -49,6 +51,7 @@ const respondent = await createClient('rules-respondent')
 const stranger = await createClient('rules-stranger')
 const formId = `rules-${Date.now()}`
 const formRef = doc(owner.db, 'forms', formId)
+const respondentFormRef = doc(respondent.db, 'forms', formId)
 const responseRef = doc(respondent.db, 'forms', formId, 'responses', respondent.user.uid)
 
 try {
@@ -60,9 +63,15 @@ try {
     responseCount: 0,
     published: true,
     settings: {
-      access: { participation: 'anyone', allowMultiple: false, allowedEmails: [] },
+      access: {
+        participation: 'anyone',
+        identityCollection: 'anonymous',
+        allowMultiple: false,
+        allowedEmails: [],
+        allowedGroups: [],
+      },
       schedule: { status: 'open' },
-      submission: { allowEditAfterSubmit: false },
+      submission: { allowEditAfterSubmit: false, maxResponses: 10 },
     },
   })
   const ownerForms = await getDocs(query(collection(owner.db, 'forms'), where('ownerUid', '==', owner.user.uid)))
@@ -78,31 +87,50 @@ try {
   await assertDenied(setDoc(responseRef, {
     responseId: respondent.user.uid,
     formId,
+    actorUid: respondent.user.uid,
     respondentUid: null,
     anonymousId: respondent.user.uid,
+    respondentEmail: '',
+    respondentName: '',
+    studentId: '',
+    attachments: [],
     answers: { 1: 'bypass' },
     status: 'submitted',
-  }), 'Respondents cannot bypass the callable submission transaction')
+    formVersion: 1,
+    submittedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    immutable: true,
+  }), 'A response cannot be created without its atomic counter update')
 
-  const adminUrl = `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents/forms/${formId}/responses/${respondent.user.uid}`
-  const adminResponse = await fetch(adminUrl, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer owner',
-    },
-    body: JSON.stringify({
-      fields: {
-        responseId: { stringValue: respondent.user.uid },
-        formId: { stringValue: formId },
-        anonymousId: { stringValue: respondent.user.uid },
-        answers: { mapValue: { fields: { 1: { stringValue: 'test' } } } },
-        status: { stringValue: 'submitted' },
-      },
-    }),
+  await runTransaction(respondent.db, async (transaction) => {
+    const currentForm = await transaction.get(respondentFormRef)
+    assert.equal(currentForm.data().responseCount, 0)
+    transaction.set(responseRef, {
+      responseId: respondent.user.uid,
+      formId,
+      actorUid: respondent.user.uid,
+      respondentUid: null,
+      anonymousId: respondent.user.uid,
+      respondentEmail: '',
+      respondentName: '',
+      studentId: '',
+      attachments: [],
+      answers: { 1: 'test' },
+      status: 'submitted',
+      formVersion: 1,
+      submittedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      immutable: true,
+    })
+    transaction.update(respondentFormRef, {
+      responseCount: 1,
+      latestResponseId: respondent.user.uid,
+      updatedAt: serverTimestamp(),
+    })
   })
-  assert.equal(adminResponse.ok, true, 'Cloud Functions Admin SDK equivalent can create a response')
+
   assert.equal((await getDoc(responseRef)).exists(), true, 'A respondent can read their own response')
+  assert.equal((await getDoc(respondentFormRef)).data().responseCount, 1, 'The response counter increments atomically')
 
   const strangerResponseRef = doc(stranger.db, 'forms', formId, 'responses', respondent.user.uid)
   await assertDenied(getDoc(strangerResponseRef), 'Another respondent cannot read the response')
@@ -110,6 +138,11 @@ try {
   await assertDenied(setDoc(responseRef, { answers: { 1: 'duplicate' } }), 'A respondent cannot submit directly')
   await assertDenied(updateDoc(responseRef, { answers: { 1: 'changed' } }), 'A respondent cannot update the response')
   await assertDenied(deleteDoc(responseRef), 'A respondent cannot delete the response')
+  await assertDenied(updateDoc(respondentFormRef, {
+    responseCount: 2,
+    latestResponseId: 'missing-response',
+    updatedAt: serverTimestamp(),
+  }), 'The response counter cannot increment without a new response')
 
   await deleteDoc(formRef)
   console.log('Firestore response rules test passed')

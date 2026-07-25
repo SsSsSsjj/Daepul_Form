@@ -6,7 +6,7 @@ import {
   sendSignInLinkToEmail, setPersistence, signInAnonymously, signInWithEmailLink, signInWithPopup, signInWithRedirect, signOut, type User,
 } from 'firebase/auth'
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
-import { Timestamp, collection, deleteDoc, doc, getDoc, getDocs, initializeFirestore, limit, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { Timestamp, collection, deleteDoc, doc, getDoc, getDocs, initializeFirestore, limit, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage'
 import {
@@ -707,25 +707,71 @@ export async function submitResponseOnce({ formId, user, answers, surveyEndDate,
   studentId?: string
   attachments?: ResponseAttachment[]
 }): Promise<import('./types').QuizResult | null> {
-  if (!functions) throw new Error('Firebase Functions가 설정되지 않았습니다.')
-  void user
+  if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
   void surveyEndDate
   void questions
-  void settings
   try {
-    const result = await httpsCallable<
-      Record<string, unknown>,
-      { responseId: string; quizResult?: import('./types').QuizResult }
-    >(functions, 'submitFormResponse')({
-      formId,
-      answers,
-      respondentEmail,
-      respondentName,
-      studentId,
-      attachments,
+    await runTransaction(db, async (transaction) => {
+      const formRef = doc(db, 'forms', formId)
+      const formSnapshot = await transaction.get(formRef)
+      if (!formSnapshot.exists()) throw new Error('폼을 찾을 수 없습니다.')
+
+      const form = formSnapshot.data()
+      const storedSettings = { ...settings, ...(form.settings ?? {}) } as FormSettings
+      const access = storedSettings.access
+      const schedule = storedSettings.schedule
+      const submission = storedSettings.submission
+      if (form.published !== true || schedule.status !== 'open') {
+        throw new Error('현재 응답을 접수하지 않는 폼입니다.')
+      }
+
+      const startsAt = Date.parse(schedule.startsAt ?? '')
+      const closesAt = Date.parse(schedule.closesAt ?? '')
+      if (Number.isFinite(startsAt) && startsAt > Date.now()) throw new Error('아직 응답 접수가 시작되지 않았습니다.')
+      if (Number.isFinite(closesAt) && closesAt < Date.now()) throw new Error('응답 접수가 마감되었습니다.')
+      if (form.surveyEndAt instanceof Timestamp && form.surveyEndAt.toMillis() < Date.now()) {
+        throw new Error('응답 접수가 마감되었습니다.')
+      }
+
+      const responseCount = Math.max(0, Number(form.responseCount ?? 0))
+      const maximum = Math.max(0, Number(submission.maxResponses ?? 0))
+      if (maximum > 0 && responseCount >= maximum) throw new Error('최대 참여 인원에 도달했습니다.')
+
+      const responseId = access.allowMultiple ? crypto.randomUUID() : user.uid
+      const responseRef = doc(db, 'forms', formId, 'responses', responseId)
+      if (!access.allowMultiple && (await transaction.get(responseRef)).exists()) {
+        throw new Error('already-submitted')
+      }
+
+      const responseEmail = access.identityCollection === 'verified_email'
+        ? user.email ?? ''
+        : respondentEmail.trim()
+      transaction.set(responseRef, {
+        responseId,
+        formId,
+        actorUid: user.uid,
+        respondentUid: user.isAnonymous ? null : user.uid,
+        anonymousId: user.isAnonymous ? user.uid : null,
+        respondentEmail: responseEmail,
+        respondentName: respondentName.trim(),
+        studentId: studentId.trim(),
+        attachments,
+        answers,
+        status: 'submitted',
+        formVersion: Number(storedSettings.version ?? 1),
+        submittedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        immutable: submission.allowEditAfterSubmit !== true,
+      })
+      transaction.update(formRef, {
+        responseCount: responseCount + 1,
+        latestResponseId: responseId,
+        updatedAt: serverTimestamp(),
+      })
     })
-    return result.data.quizResult ?? null
+    return null
   } catch (error) {
+    if (error instanceof Error && error.message === 'already-submitted') throw error
     throw new Error(submissionErrorMessage(error))
   }
 }

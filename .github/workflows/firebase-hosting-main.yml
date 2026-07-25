@@ -29,9 +29,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Firebase Functions dependencies
-        run: npm ci --prefix functions
-
       - name: Scan tracked files for exposed secrets
         run: npm run security:scan
 
@@ -61,8 +58,8 @@ jobs:
       - name: Install Firebase CLI
         run: npm install --global firebase-tools@15.1.0
 
-      - name: Deploy response access enforcement
-        run: firebase deploy --only functions:submitFormResponse --project daepulform --non-interactive
+      - name: Deploy Firestore rules and indexes
+        run: firebase deploy --only firestore:rules,firestore:indexes --project daepulform --non-interactive
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
