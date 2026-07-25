@@ -47,7 +47,7 @@ function ProgramVolumeChart({ programs }: { programs: ProgramComparisonMetric[] 
       <div className="chart-legend"><span className="demand">수요</span><span className="application">신청</span><span className="satisfaction">만족도 응답</span></div>
     </header>
     <div className="volume-chart-body">{programs.map((program) => <article key={program.programId}>
-      <b>{program.programName}</b>
+      <b>{program.year} · {program.programName}</b>
       {([
         ['demand', program.demandResponses, '수요'],
         ['application', program.applicationResponses, '신청'],
@@ -78,6 +78,7 @@ function ResponseDonut({ program }: { program?: ProgramComparisonMetric }) {
 function GradePopularityChart({ program }: { program?: ProgramComparisonMetric }) {
   const grades = program
     ? Object.entries(program.gradeBreakdown).filter(([grade]) => grade !== '학년 미응답')
+      .sort(([left], [right]) => gradeOptions.indexOf(left) - gradeOptions.indexOf(right))
     : []
   const maximum = Math.max(1, ...grades.flatMap(([, metric]) => [metric.applicationResponses, metric.satisfactionResponses]))
   return <section className="card comparison-chart grade-chart" aria-labelledby="grade-chart-title">
