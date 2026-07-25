@@ -129,23 +129,31 @@ export function ProgramComparisonDashboard({
     data.years.includes(currentYear) ? currentYear : (data.years[0] ?? currentYear),
   )
   const [grade, setGrade] = useState('all')
-  const [programId, setProgramId] = useState('')
+  const [programName, setProgramName] = useState('all')
   const [topics, setTopics] = useState<Record<string, ResponseTopic[]>>({})
   const [analyzing, setAnalyzing] = useState(false)
   useEffect(() => {
     if (year !== 'all' && data.years.length && !data.years.includes(year)) setYear(data.years[0])
   }, [data.years, year])
+  const programOptions = useMemo(() => [...new Set(data.programs.map(({ programName: name }) => name))]
+    .sort((left, right) => left.localeCompare(right, 'ko')), [data.programs])
   const filtered = useMemo(() => {
     const source = year === 'all'
       ? data.programs
       : filterProgramMetrics(data.programs, year, grade)
+    const filterProgram = (items: ProgramComparisonMetric[]) => programName === 'all'
+      ? items
+      : items.filter((program) => program.programName === programName)
     if (year === 'all' && grade !== 'all') {
-      return [...new Set(data.programs.map(({ year: itemYear }) => itemYear))]
+      return filterProgram([...new Set(data.programs.map(({ year: itemYear }) => itemYear))]
         .flatMap((itemYear) => filterProgramMetrics(data.programs, itemYear, grade))
+      )
     }
-    return source
-  }, [data.programs, grade, year])
-  const selected = filtered.find(({ programId: id }) => id === programId) ?? filtered[0]
+    return filterProgram(source)
+  }, [data.programs, grade, programName, year])
+  const selected = filtered.find((program) =>
+    program.demandResponses + program.applicationResponses + program.satisfactionResponses > 0,
+  ) ?? filtered[0]
   const topDemand = rankedPrograms([...filtered], 'demandResponses')[0]
   const topApplications = rankedPrograms([...filtered], 'applicationResponses')[0]
   const topCompetition = rankedPrograms([...filtered], 'applicationRatio')[0]
@@ -215,6 +223,10 @@ export function ProgramComparisonDashboard({
       <button onClick={onRefresh} disabled={loading}>{loading ? <LoaderCircle className="spin"/> : <BarChart3/>} 새로고침</button>
     </div>
     <div className="card comparison-filters">
+      <label>프로그램<select value={programName} onChange={(event) => setProgramName(event.target.value)}>
+        <option value="all">전체 프로그램 비교</option>
+        {programOptions.map((name) => <option value={name} key={name}>{name}</option>)}
+      </select></label>
       <label>연도<select value={year} onChange={(event) => setYear(event.target.value === 'all' ? 'all' : Number(event.target.value))}>
         <option value="all">전체 연도 비교</option>
         {data.years.map((item) => <option value={item} key={item}>{item}년</option>)}
@@ -234,9 +246,6 @@ export function ProgramComparisonDashboard({
         <MetricCard label="평균 만족도 1위" program={topSatisfaction} value={(item) => `${score(item.satisfactionAverage)}점`} sample={(item) => item.satisfactionSampleSize} icon={<Sparkles/>}/>
       </div>
       <section className="comparison-visuals" aria-label="프로그램 비교 그래프">
-        <div className="card chart-program-picker"><label>세부 분석 프로그램<select value={selected?.programId ?? ''} onChange={(event) => setProgramId(event.target.value)}>
-          {filtered.map((program) => <option value={program.programId} key={program.programId}>{program.year} · {program.programName}</option>)}
-        </select></label><small>도넛·학년별·연도별 그래프에 적용됩니다.</small></div>
         <ProgramVolumeChart programs={filtered}/>
         <div className="comparison-chart-grid"><ResponseDonut program={selected}/><GradePopularityChart program={selected}/></div>
         <YearlyRatingChart items={selectedYearlyItems}/>
@@ -261,8 +270,9 @@ export function ProgramComparisonDashboard({
           <small>실제 출석률이 아니라 선발 인원 대비 만족도 응답률을 사용합니다.</small>
         </article>
         <article className="card"><h2>아쉬운 점 분석</h2>
-          <select value={selected?.programId ?? ''} onChange={(event) => setProgramId(event.target.value)}>
-            {filtered.map((program) => <option value={program.programId} key={program.programId}>{program.year} · {program.programName}</option>)}
+          <select value={programName} onChange={(event) => setProgramName(event.target.value)}>
+            <option value="all">현재 필터의 대표 프로그램</option>
+            {programOptions.map((name) => <option value={name} key={name}>{name}</option>)}
           </select>
           <div className="comparison-keywords">{keywords.map((item) => <span key={item.keyword}>{item.keyword} <b>{item.count}</b></span>)}</div>
           <button onClick={() => void analyze()} disabled={analyzing || !selected?.improvementComments.length || Boolean(selected && topics[selected.programId])}>
