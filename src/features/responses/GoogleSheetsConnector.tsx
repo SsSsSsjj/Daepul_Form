@@ -28,23 +28,23 @@ function connectionError(error:unknown){
   return message||'Google 스프레드시트 연결을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.'
 }
 
-export function GoogleSheetsConnector({formId}:{formId?:string}){
+export function GoogleSheetsConnector({formId,appsScriptUrl=''}:{formId?:string;appsScriptUrl?:string}){
   const [connection,setConnection]=useState<GoogleSheetsConnectionStatus>(disconnected)
   const [loading,setLoading]=useState(false)
   const [message,setMessage]=useState('')
-  const configured=googleSheetsAppsScriptConfigured()
+  const configured=googleSheetsAppsScriptConfigured(appsScriptUrl)
 
   const loadConnection=useCallback(async()=>{
     if(!formId||!configured){setConnection(disconnected);return}
     setLoading(true);setMessage('')
     try{
-      setConnection(await getGoogleSheetsConnection(formId))
+      setConnection(await getGoogleSheetsConnection(formId,appsScriptUrl))
     }catch(error){
       setMessage(connectionError(error))
     }finally{
       setLoading(false)
     }
-  },[configured,formId])
+  },[appsScriptUrl,configured,formId])
 
   useEffect(()=>{void loadConnection()},[loadConnection])
 
@@ -52,7 +52,7 @@ export function GoogleSheetsConnector({formId}:{formId?:string}){
     if(!formId)return
     setLoading(true);setMessage('')
     try{
-      setConnection(await createAndConnectGoogleSpreadsheet(formId))
+      setConnection(await createAndConnectGoogleSpreadsheet(formId,appsScriptUrl))
       setMessage('응답용 스프레드시트를 만들고 제작자 계정에 공유했습니다.')
     }catch(error){
       setMessage(connectionError(error))
@@ -65,7 +65,7 @@ export function GoogleSheetsConnector({formId}:{formId?:string}){
     if(!formId||!window.confirm('자동 저장 연결을 해제할까요? 이미 생성된 스프레드시트는 삭제되지 않습니다.'))return
     setLoading(true);setMessage('')
     try{
-      setConnection(await disconnectGoogleSheets(formId))
+      setConnection(await disconnectGoogleSheets(formId,appsScriptUrl))
       setMessage('자동 저장 연결을 해제했습니다. 기존 스프레드시트는 그대로 유지됩니다.')
     }catch(error){
       setMessage(connectionError(error))

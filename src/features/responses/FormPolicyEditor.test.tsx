@@ -25,6 +25,19 @@ describe('FormPolicyEditor branding guidance', () => {
     expect(screen.getByText('Google 스프레드시트 자동 저장')).toBeInTheDocument()
   })
 
+  it('stores a form-specific Apps Script fallback URL',()=>{
+    const onChange=vi.fn()
+    render(<FormPolicyEditor value={defaultFormSettings} onChange={onChange}/>)
+    fireEvent.change(screen.getByLabelText('Apps Script 웹앱 URL'),{
+      target:{value:'https://script.google.com/macros/s/deployment-id/exec'},
+    })
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      integrations:expect.objectContaining({
+        sheetsWebhookUrl:'https://script.google.com/macros/s/deployment-id/exec',
+      }),
+    }))
+  })
+
   it('renders and updates the visible link preview', () => {
     let current = structuredClone(defaultFormSettings)
     const view = render(

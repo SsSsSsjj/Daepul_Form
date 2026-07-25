@@ -17,10 +17,10 @@ function doPost(event) {
       return jsonResponse_({ ok: true, data: connectionStatus_(formId) });
     }
     if (action === 'connect') {
-      return jsonResponse_({ ok: true, data: connectSpreadsheet_(formId, user) });
+      return jsonResponse_({ ok: true, data: withConnectionLock_(() => connectSpreadsheet_(formId, user)) });
     }
     if (action === 'disconnect') {
-      deleteFirestoreDocument_(`${CONNECTION_COLLECTION}/${formId}`);
+      withConnectionLock_(() => deleteFirestoreDocument_(`${CONNECTION_COLLECTION}/${formId}`));
       return jsonResponse_({ ok: true, data: { status: 'disconnected' } });
     }
     throw appError_('invalid-argument', '지원하지 않는 요청입니다.');
@@ -32,6 +32,16 @@ function doPost(event) {
       code: quota ? 'apps-script/quota' : (error && error.code) || 'apps-script/failed',
       error: quota ? 'Google 자동 저장 사용량을 초과했습니다.' : String((error && error.message) || error),
     });
+  }
+}
+
+function withConnectionLock_(operation) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw appError_('apps-script/busy', '연결 요청을 처리 중입니다. 잠시 후 다시 시도해 주세요.');
+  try {
+    return operation();
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -50,21 +60,27 @@ function installDaepulFormSync() {
 }
 
 function syncDaepulFormResponses() {
-  listFirestoreDocuments_(CONNECTION_COLLECTION).forEach((connection) => {
-    if (connection.status !== 'connected' || !connection.formId || !connection.spreadsheetId) return;
-    try {
-      syncConnection_(connection);
-      patchFirestoreDocument_(`${CONNECTION_COLLECTION}/${connection.formId}`, {
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: '',
-      });
-    } catch (error) {
-      console.error(`Sync failed for ${connection.formId}`, error);
-      patchFirestoreDocument_(`${CONNECTION_COLLECTION}/${connection.formId}`, {
-        lastSyncError: String((error && error.message) || error).slice(0, 500),
-      });
-    }
-  });
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return;
+  try {
+    listFirestoreDocuments_(CONNECTION_COLLECTION).forEach((connection) => {
+      if (connection.status !== 'connected' || !connection.formId || !connection.spreadsheetId) return;
+      try {
+        syncConnection_(connection);
+        patchFirestoreDocument_(`${CONNECTION_COLLECTION}/${connection.formId}`, {
+          lastSyncedAt: new Date().toISOString(),
+          lastSyncError: '',
+        });
+      } catch (error) {
+        console.error(`Sync failed for ${connection.formId}`, error);
+        patchFirestoreDocument_(`${CONNECTION_COLLECTION}/${connection.formId}`, {
+          lastSyncError: String((error && error.message) || error).slice(0, 500),
+        });
+      }
+    });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function connectSpreadsheet_(formId, user) {
