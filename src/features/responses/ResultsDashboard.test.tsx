@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { FormQuestion, QuestionSummary } from '../../types'
+import type { FormQuestion, QuestionSummary, ResponseTopic } from '../../types'
 import { createSampleResponses } from './model'
 import { ResultsDashboard } from './ResultsDashboard'
 
@@ -37,7 +37,15 @@ describe('ResultsDashboard', () => {
     expect(onBack).toHaveBeenCalledOnce()
   })
 
-  it('exposes all four result views and the sample-data warning', () => {
+  it('exposes all four result views, AI summary, and the sample-data warning', async () => {
+    const topics: ResponseTopic[] = [{
+      id: 'sample-topic',
+      title: '실무 중심 구성에 대한 만족',
+      category: '긍정 의견',
+      summary: '실제 사례가 도움이 되었다는 의견이 많았습니다.',
+      sourceIds: [0, 1],
+      reportSentence: '참여자들은 실무 사례를 긍정적으로 평가했습니다.',
+    }]
     render(<ResultsDashboard
       title="테스트 폼"
       loading={false}
@@ -47,9 +55,12 @@ describe('ResultsDashboard', () => {
       message=""
       sample
       onRefresh={vi.fn()}
+      onAnalyze={vi.fn().mockResolvedValue(topics)}
       onExportExcel={vi.fn()}
     />)
     expect(screen.getByText('예시 데이터이며 실제 응답이 아닙니다')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'AI 요약' }))
+    expect(await screen.findByText('실무 중심 구성에 대한 만족')).toBeInTheDocument()
     expect(screen.getAllByRole('tab')).toHaveLength(4)
     fireEvent.click(screen.getByRole('tab', { name: /표/ }))
     expect(screen.getByLabelText('응답 표')).toBeInTheDocument()
@@ -69,7 +80,7 @@ describe('ResultsDashboard', () => {
     />)
     fireEvent.click(screen.getByRole('tab', { name: /개별/ }))
     expect(screen.getByRole('button', { name: /인쇄 \/ PDF/ })).toBeInTheDocument()
-    expect(screen.getByText('20260001')).toBeInTheDocument()
+    expect(screen.getByText('20201200')).toBeInTheDocument()
   })
 
   it('provides advanced filters, configurable columns and server-backed bulk actions', () => {
