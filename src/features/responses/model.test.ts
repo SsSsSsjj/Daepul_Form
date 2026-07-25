@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { defaultFormSettings, type FormQuestion, type StoredFormResponse } from '../../types'
 import {
+  createSampleAnalysisTopics,
   createSampleResponses,
   extractKeywordInsights,
   getFormAvailability,
@@ -75,16 +76,50 @@ describe('public response model', () => {
       { id: 22, label: '복학 지원', type: 'short_text', required: true, sectionId: 'leave', sectionNext: 'submit' },
     ]
     const [student, leave] = createSampleResponses(routedQuestions, 2)
-    expect(student.answers).toMatchObject({ 20: '재학생', 21: 1 })
+    expect(student.answers).toMatchObject({ 20: '재학생', 21: 5 })
     expect(student.answers).not.toHaveProperty('22')
-    expect(leave.answers).toMatchObject({ 20: '휴학생', 22: '예시 답변 2' })
+    expect(leave.answers).toMatchObject({
+      20: '휴학생',
+      22: '복학 전에 학업 계획을 점검할 수 있도록 담당자와 일대일 상담을 받고 싶습니다.',
+    })
     expect(leave.answers).not.toHaveProperty('21')
+  })
+
+  it('fills sample identity and free-text answers with realistic content', () => {
+    const realisticQuestions: FormQuestion[] = [
+      { id: 30, label: '이메일', type: 'short_text', required: true, inputFormat: 'email' },
+      { id: 31, label: '연락처', type: 'short_text', required: true, inputFormat: 'phone' },
+      { id: 32, label: '생년월일', type: 'short_text', required: true, inputFormat: 'date' },
+      { id: 33, label: '프로그램 참여 이유', type: 'long_text', required: true },
+    ]
+    const [sample] = createSampleResponses(realisticQuestions, 1)
+    expect(sample.answers).toMatchObject({
+      30: 'minjun.kim@kangnam.ac.kr',
+      31: '010-2741-5836',
+      32: '2002-03-14',
+      33: '현직자의 실제 업무 이야기를 듣고 제 진로 방향을 구체적으로 정하고 싶어서 신청했습니다.',
+    })
+    expect(Object.values(sample.answers).join(' ')).not.toContain('예시 답변')
+  })
+
+  it('creates an immediate AI-summary demonstration for sample responses', () => {
+    const returnQuestions: FormQuestion[] = [
+      { id: 40, label: '복학 준비를 위해 필요한 지원을 적어 주세요.', type: 'long_text', required: false },
+    ]
+    const sampleResponses = createSampleResponses(returnQuestions, 6)
+    const topics = createSampleAnalysisTopics(returnQuestions, sampleResponses)
+    expect(topics.map((topic) => topic.title)).toEqual([
+      '복학 일정과 학사 절차 안내',
+      '개별 학업 상담 수요',
+      '진로·취업 연계 지원',
+    ])
+    expect(topics.every((topic) => topic.summary && topic.reportSentence)).toBe(true)
   })
 
   it('searches, sorts and paginates response metadata and answers', () => {
     const responses = createSampleResponses(questions, 60)
     const page = queryResponses(responses, {
-      filters: { query: 'sample1@kangnam.ac.kr', status: 'all', selectedIds: [] },
+      filters: { query: 'minjun.kim@kangnam.ac.kr', status: 'all', selectedIds: [] },
       sortBy: 'submittedAt',
       sortDirection: 'desc',
       page: 1,

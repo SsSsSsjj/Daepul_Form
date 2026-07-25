@@ -15,7 +15,7 @@ import {
 import { defaultFormSettings, type AnswerValue, type FormQuestion, type FormSettings, type FormType, type ProgramInfo, type QuestionSummary, type QuizResult, type ResponseAttachment, type ResponsePage, type ResponseQuery, type StoredFormResponse } from './types'
 import { ResultsDashboard } from './features/responses/ResultsDashboard'
 import { FormPolicyEditor } from './features/responses/FormPolicyEditor'
-import { createSampleResponses, getFormAvailability, normalizeFormSettings, settingsFromAiSuggestion, validateAnswers } from './features/responses/model'
+import { createSampleAnalysisTopics, createSampleResponses, getFormAvailability, normalizeFormSettings, queryResponses, settingsFromAiSuggestion, validateAnswers } from './features/responses/model'
 import { reorderQuestions } from './features/forms/reorderQuestions'
 import { answersForResponseRoute, branchTargetForSection, getQuestionSections, nextSectionId, resolveResponseRoute, routingWarnings, type QuestionSection } from './features/forms/conditionalRouting'
 
@@ -1846,7 +1846,11 @@ export default function App() {
             }
             onAnalyze={
               sampleResults
-                ? undefined
+                ? async (query) =>
+                    createSampleAnalysisTopics(
+                      questions,
+                      queryResponses(responses, query, true).items
+                    )
                 : async (query) => {
                     const items = (
                       await queryFormResponses(formId, query, true)
