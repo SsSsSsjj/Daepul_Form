@@ -170,6 +170,7 @@ export interface ProgramRecord {
   ownerEmail?: string
   createdAt?: string
   updatedAt?: string
+  deletedAt?: string
 }
 
 export interface ProgramComparisonMetric {

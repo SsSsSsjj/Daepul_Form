@@ -1056,6 +1056,7 @@ export const getProgramComparisonData = onCall(responseCallableOptions, async (r
     .where('ownerUid', '==', request.auth.uid)
     .get()
   const programs = programSnapshot.docs
+    .filter((item) => !item.data().deletedAt)
     .map((item) => {
       const data = item.data()
       const selectedHeadcount = Number(data.selectedHeadcount)

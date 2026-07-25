@@ -7,9 +7,9 @@ import kangnamUniversityLogo from './assets/kangnam-university-logo-transparent.
 import kangnamWelcomeMascot from './assets/kangnam-welcome-mascot.png'
 import {
   aiFailureMessage, completeEmailSignIn, deleteFormRecord, deleteResponseDraft, discardEmailSignInLink, firebaseConfigured, generateFormFromDocuments,
-  emptyDeletedForms, getDeletedForms, getFormVersions, getOwnResponse, getOwnedForms, getOwnedPrograms, getPendingEmailAddress, getProgramComparisonData, getPublicResultSummary, getPublishedForm, hasEmailSignInLink, permanentlyDeleteForm,
+  emptyDeletedForms, getDeletedForms, getDeletedPrograms, getFormVersions, getOwnResponse, getOwnedForms, getOwnedPrograms, getPendingEmailAddress, getProgramComparisonData, getPublicResultSummary, getPublishedForm, hasEmailSignInLink, moveProgramToTrash, permanentlyDeleteForm, permanentlyDeleteProgram,
   hasSubmittedResponse, loadResponseDraft, loginFailureMessage, logout, observeAuthState, publishFormRecord, requestEmailSignInLink,
-  manageFormResponses, queryFormResponses, restoreFormRecord, saveAnalysisRecord, saveResponseDraft, setFormCollaborator, signInAsGuest, signInWithGoogle, summarizeResponses,
+  manageFormResponses, queryFormResponses, restoreFormRecord, restoreProgramRecord, saveAnalysisRecord, saveResponseDraft, setFormCollaborator, signInAsGuest, signInWithGoogle, summarizeResponses,
   saveProgramRecord, submitResponseOnce, updateFormClassification, updateFormLifecycle, updateFormSchedule, updateOwnResponse, uploadFormImage, uploadResponseAttachment, type FirebaseUser, type LoginProvider,
 } from './firebase'
 import { defaultFormSettings, type AnswerValue, type FormQuestion, type FormSettings, type FormType, type ProgramComparisonData, type ProgramInfo, type ProgramRecord, type QuestionSummary, type QuizResult, type ResponseAttachment, type ResponsePage, type ResponseQuery, type StoredFormResponse } from './types'
@@ -214,6 +214,7 @@ export default function App() {
   );
   const [programId, setProgramId] = useState(initialDraft.programId ?? "");
   const [programRecords, setProgramRecords] = useState<ProgramRecord[]>([]);
+  const [deletedPrograms, setDeletedPrograms] = useState<ProgramRecord[]>([]);
   const [newProgramName, setNewProgramName] = useState("");
   const [newProgramYear, setNewProgramYear] = useState(new Date().getFullYear());
   const [newProgramHeadcount, setNewProgramHeadcount] = useState("");
@@ -787,14 +788,16 @@ export default function App() {
     setPage("manage");
     setResultLoading(true);
     try {
-      const [active, deleted, programs] = await Promise.all([
+      const [active, deleted, programs, trashedPrograms] = await Promise.all([
         getOwnedForms(user.uid),
         getDeletedForms(user.uid),
         getOwnedPrograms(user.uid),
+        getDeletedPrograms(user.uid),
       ]);
       setOwnedForms(active);
       setDeletedForms(deleted);
       setProgramRecords(programs);
+      setDeletedPrograms(trashedPrograms);
     } catch {
       setMessage("내 폼 목록을 불러오지 못했습니다.");
     } finally {
@@ -852,6 +855,39 @@ export default function App() {
       setMessage("선발 인원을 수정했습니다.");
     } catch {
       setMessage("선발 인원을 수정하지 못했습니다.");
+    }
+  };
+  const deleteProgramRecord = async (record: ProgramRecord) => {
+    if (!window.confirm(`“${record.name}” 프로그램을 휴지통으로 이동할까요?\n연결된 폼과 응답은 보존됩니다.`)) return;
+    try {
+      await moveProgramToTrash(record.id);
+      setProgramRecords((current) => current.filter(({ id }) => id !== record.id));
+      setDeletedPrograms((current) => [{ ...record, deletedAt: new Date().toISOString() }, ...current]);
+      if (programId === record.id) setProgramId("");
+      setMessage("프로그램을 휴지통으로 이동했습니다.");
+    } catch {
+      setMessage("프로그램을 휴지통으로 이동하지 못했습니다.");
+    }
+  };
+  const restoreDeletedProgram = async (record: ProgramRecord) => {
+    try {
+      await restoreProgramRecord(record.id);
+      const restored = { ...record, deletedAt: undefined };
+      setDeletedPrograms((current) => current.filter(({ id }) => id !== record.id));
+      setProgramRecords((current) => [restored, ...current]);
+      setMessage("프로그램을 복구했습니다.");
+    } catch {
+      setMessage("프로그램을 복구하지 못했습니다.");
+    }
+  };
+  const permanentlyDeleteDeletedProgram = async (record: ProgramRecord) => {
+    if (!window.confirm(`“${record.name}” 프로그램을 영구 삭제할까요?\n연결된 폼과 응답은 남지만 프로그램 연결은 복구할 수 없습니다.`)) return;
+    try {
+      await permanentlyDeleteProgram(record.id);
+      setDeletedPrograms((current) => current.filter(({ id }) => id !== record.id));
+      setMessage("프로그램을 영구 삭제했습니다.");
+    } catch {
+      setMessage("프로그램을 영구 삭제하지 못했습니다.");
     }
   };
   const deleteOwnedForm = async (form: OwnedForm) => {
@@ -2148,7 +2184,17 @@ export default function App() {
               <div><BarChart3/><span><b>프로그램 통합 비교</b><small>연도·학년별 신청 경쟁도, 만족도 응답률과 개선 의견을 확인하세요.</small></span></div>
               <button className="primary" onClick={() => void openComparison()}><BarChart3/> 비교 대시보드</button>
             </div>
-            {programRecords.length > 0 && <section className="card program-record-list"><h2>등록 프로그램</h2><div>{programRecords.map((record) => <button key={record.id} onClick={() => void editProgramHeadcount(record)}><b>{record.year} · {record.name}</b><span>선발 {record.selectedHeadcount ?? "미정"}명 · 수정</span></button>)}</div></section>}
+            {programRecords.length > 0 && <section className="card program-record-list"><h2>등록 프로그램</h2><div>{programRecords.map((record) => <article className="program-record-card" key={record.id}>
+              <button onClick={() => void editProgramHeadcount(record)}><b>{record.year} · {record.name}</b><span>선발 {record.selectedHeadcount ?? "미정"}명 · 수정</span></button>
+              <button className="program-delete-button danger" aria-label={`${record.name} 프로그램 삭제`} title="프로그램을 휴지통으로 이동" onClick={() => void deleteProgramRecord(record)}><Trash2 size={16}/></button>
+            </article>)}</div></section>}
+            {deletedPrograms.length > 0 && <section className="card program-trash-panel">
+              <div><span className="eyebrow">PROGRAM TRASH</span><h2>프로그램 휴지통</h2><p>연결된 폼과 응답은 보존되며 프로그램을 복구하면 다시 집계됩니다.</p></div>
+              {deletedPrograms.map((record) => <div className="row program-trash-item" key={record.id}>
+                <span><b>{record.year} · {record.name}</b><small>{record.deletedAt ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(record.deletedAt)) : "삭제 시각 없음"}</small></span>
+                <div><button onClick={() => void restoreDeletedProgram(record)}><RefreshCcw size={16}/> 복구</button><button className="danger" aria-label={`${record.name} 프로그램 영구 삭제`} onClick={() => void permanentlyDeleteDeletedProgram(record)}><Trash2 size={16}/></button></div>
+              </div>)}
+            </section>}
             {message && <Notice text={message} />}{' '}
             {resultLoading ? (
               <div className="center">

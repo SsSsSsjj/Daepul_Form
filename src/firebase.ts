@@ -6,7 +6,7 @@ import {
   sendSignInLinkToEmail, setPersistence, signInAnonymously, signInWithEmailLink, signInWithPopup, signInWithRedirect, signOut, type User,
 } from 'firebase/auth'
 import { GoogleAIBackend, Schema, getAI, getGenerativeModel } from 'firebase/ai'
-import { Timestamp, collection, deleteDoc, doc, getDoc, getDocs, initializeFirestore, limit, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { Timestamp, collection, deleteDoc, deleteField, doc, getDoc, getDocs, initializeFirestore, limit, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage'
 import {
@@ -413,7 +413,7 @@ export async function getOwnedForms(userUid: string) {
   }
 }
 
-export async function getOwnedPrograms(userUid: string): Promise<ProgramRecord[]> {
+async function getProgramRecords(userUid: string): Promise<ProgramRecord[]> {
   if (!db) return []
   const snapshot = await getDocs(query(collection(db, 'programs'), where('ownerUid', '==', userUid)))
   return snapshot.docs.map((item) => {
@@ -427,8 +427,32 @@ export async function getOwnedPrograms(userUid: string): Promise<ProgramRecord[]
       ownerEmail: String(data.ownerEmail ?? ''),
       createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : '',
       updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : '',
+      deletedAt: data.deletedAt instanceof Timestamp ? data.deletedAt.toDate().toISOString() : '',
     }
   }).sort((left, right) => right.year - left.year || left.name.localeCompare(right.name, 'ko'))
+}
+
+export async function getOwnedPrograms(userUid: string): Promise<ProgramRecord[]> {
+  return (await getProgramRecords(userUid)).filter((program) => !program.deletedAt)
+}
+
+export async function getDeletedPrograms(userUid: string): Promise<ProgramRecord[]> {
+  return (await getProgramRecords(userUid)).filter((program) => Boolean(program.deletedAt))
+}
+
+export async function moveProgramToTrash(programId: string) {
+  if (!db) throw new Error('firestore-not-configured')
+  await updateDoc(doc(db, 'programs', programId), { deletedAt: serverTimestamp(), updatedAt: serverTimestamp() })
+}
+
+export async function restoreProgramRecord(programId: string) {
+  if (!db) throw new Error('firestore-not-configured')
+  await updateDoc(doc(db, 'programs', programId), { deletedAt: deleteField(), updatedAt: serverTimestamp() })
+}
+
+export async function permanentlyDeleteProgram(programId: string) {
+  if (!db) throw new Error('firestore-not-configured')
+  await deleteDoc(doc(db, 'programs', programId))
 }
 
 export async function saveProgramRecord(
