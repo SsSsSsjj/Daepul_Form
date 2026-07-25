@@ -262,6 +262,16 @@ function validateAnswersAgainstQuestions(questions: unknown, answers: Record<str
     if (question.inputFormat === 'phone' && (typeof value !== 'string' || !/^010-\d{4}-\d{4}$/.test(value))) {
       throw new HttpsError('invalid-argument', '전화번호는 010-0000-0000 형식으로 입력해 주세요.')
     }
+    if (question.inputFormat === 'date') {
+      const match = typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null
+      const date = match ? new Date(`${value}T00:00:00Z`) : null
+      if (!match || !date || Number.isNaN(date.getTime())
+        || date.getUTCFullYear() !== Number(match[1])
+        || date.getUTCMonth() + 1 !== Number(match[2])
+        || date.getUTCDate() !== Number(match[3])) {
+        throw new HttpsError('invalid-argument', '날짜는 YYYY-MM-DD 형식으로 입력해 주세요.')
+      }
+    }
     if (question.type === 'number') {
       const numeric = Number(value)
       if (!Number.isFinite(numeric)) throw new HttpsError('invalid-argument', '숫자 답변을 확인해 주세요.')

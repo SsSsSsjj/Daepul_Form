@@ -138,6 +138,16 @@ export function validateAnswer(question: FormQuestion, value: unknown) {
   if (question.inputFormat === 'phone' && !/^010-\d{4}-\d{4}$/.test(text)) {
     return '전화번호 형식에 맞게 입력해 주세요. 예: 010-0000-0000'
   }
+  if (question.inputFormat === 'date') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text)
+    const date = match ? new Date(`${text}T00:00:00Z`) : null
+    if (!match || !date || Number.isNaN(date.getTime())
+      || date.getUTCFullYear() !== Number(match[1])
+      || date.getUTCMonth() + 1 !== Number(match[2])
+      || date.getUTCDate() !== Number(match[3])) {
+      return '날짜 형식에 맞게 입력해 주세요. 예: YYYY-MM-DD'
+    }
+  }
   if (question.min !== undefined && question.type === 'number' && Number(value) < question.min) {
     return `${question.min} 이상이어야 합니다.`
   }

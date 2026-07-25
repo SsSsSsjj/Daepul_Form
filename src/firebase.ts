@@ -22,6 +22,7 @@ import {
 } from './features/forms/normalizeGeneratedQuestions'
 import { createFormService } from './formService'
 import { queryResponses } from './features/responses/model'
+import { submissionErrorMessage } from './features/responses/submissionError'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -719,10 +720,7 @@ export async function submitResponseOnce({ formId, user, answers, surveyEndDate,
     })
     return result.data.quizResult ?? null
   } catch (error) {
-    const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
-    if (code.endsWith('already-exists')) throw new Error('already-submitted')
-    const message = typeof error === 'object' && error && 'message' in error ? String(error.message) : ''
-    throw new Error(message.replace(/^FirebaseError:\s*/i, '') || 'server-validation-failed')
+    throw new Error(submissionErrorMessage(error))
   }
 }
 
@@ -822,7 +820,7 @@ const formSchema = Schema.object({ properties: {
   questions: Schema.array({ items: Schema.object({ properties: {
     label: Schema.string(), type: Schema.enumString({ enum: ['short_text', 'long_text', 'select', 'checkbox', 'consent', 'rating', 'number', 'file'] }),
     required: Schema.boolean(), options: Schema.array({ items: Schema.string() }),
-    inputFormat: Schema.enumString({ enum: ['none', 'email', 'phone'] }),
+    inputFormat: Schema.enumString({ enum: ['none', 'email', 'phone', 'date'] }),
     sectionId: Schema.string(), sectionTitle: Schema.string(), sectionNext: Schema.string(),
     branchRules: Schema.array({ items: Schema.object({ properties: {
       option: Schema.string(),
@@ -882,7 +880,7 @@ export async function generateFormFromDocuments(files: File[], memo: string): Pr
   const prompt = `첨부 자료를 읽고 실제 내용에 맞는 한국어 폼과 배포 설정을 함께 설계하세요.
 만족도 조사라면 1~5점 rating과 자유의견을 포함하고, 신청서라면 신청 자격·일정·선발에 필요한 질문을 만드세요.
 객관식(select)과 체크박스(checkbox) 질문에는 실제 문서 내용을 바탕으로 options를 반드시 2개 이상 작성하세요. checkbox는 여러 항목을 동시에 선택하는 질문에만 사용하세요.
-이메일 또는 휴대전화 번호를 직접 입력받는 단답형 질문은 inputFormat을 각각 email 또는 phone으로 지정하고, 그 외 질문은 none으로 지정하세요.
+이메일, 휴대전화 번호, 생년월일이나 날짜를 직접 입력받는 단답형 질문은 inputFormat을 각각 email, phone, date로 지정하고, 그 외 질문은 none으로 지정하세요. date 답변은 YYYY-MM-DD 형식입니다.
 담당자 메모에서 섹션 분리나 답변별 이동을 직접 요청했다면 그 요청을 최우선으로 반영하세요. 모든 질문에 sectionId와 sectionTitle을 넣고, 분기 기준이 되는 단일 선택 객관식 질문 딱 하나에만 branchRules를 만드세요. 같은 분기 질문을 표현만 바꿔 반복해서 만들면 안 됩니다.
 예: "1번 섹션의 질문에서 예를 고르면 2번 섹션, 아니오를 고르면 3번 섹션"이라고 요청하면 기준 질문은 sectionId "section-1", 두 대상 질문 묶음은 각각 "section-2", "section-3"으로 만들고, 예/아니오 branchRules가 정확히 해당 ID를 가리켜야 합니다.
 담당자 메모나 문서에 "재학생만 응답", "학적 상태에 따라 다른 문항", "해당 학년만 응답"처럼 조건과 대상 문항이 명확히 적힌 경우에도 같은 방식으로 섹션과 branchRules를 만드세요.

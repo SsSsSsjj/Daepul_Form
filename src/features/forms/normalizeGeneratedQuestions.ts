@@ -8,7 +8,7 @@ export type AiGeneratedQuestion = Omit<FormQuestion, 'id' | 'branch'> & {
   }>
 }
 
-const maxQuestionsPerSection = 12
+const maxQuestionsPerSection = 10
 
 function optionSignature(question: FormQuestion) {
   if (question.type !== 'select') return ''
@@ -59,7 +59,7 @@ export function normalizeGeneratedQuestions(items: AiGeneratedQuestion[], idBase
     return {
       ...formQuestion,
       id: idBase + index,
-      inputFormat: question.type === 'short_text' && ['email', 'phone'].includes(question.inputFormat ?? '')
+      inputFormat: question.type === 'short_text' && ['email', 'phone', 'date'].includes(question.inputFormat ?? '')
         ? question.inputFormat
         : 'none',
       options: selectable ? (options.length >= 2 ? options : ['선택지 1', '선택지 2']) : undefined,
