@@ -24,6 +24,7 @@ import { createFormService } from './formService'
 import { resolvePublicFormReference } from './features/forms/publicFormLookup'
 import { queryResponses } from './features/responses/model'
 import { submissionErrorMessage } from './features/responses/submissionError'
+import { aggregateProgramComparison, type ProgramComparisonFormInput } from './features/programs/model'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -38,6 +39,7 @@ const firebaseConfig = {
 export const firebaseConfigured = Object.values(firebaseConfig).every(Boolean)
 export const demoAuthEnabled = import.meta.env.VITE_ENABLE_DEMO_AUTH === 'true'
 const organizationFormsFunctionEnabled = import.meta.env.VITE_ENABLE_ORGANIZATION_FORMS_FUNCTION === 'true'
+const programComparisonFunctionEnabled = import.meta.env.VITE_ENABLE_PROGRAM_COMPARISON_FUNCTION === 'true'
 const firebaseApp = firebaseConfigured ? initializeApp(firebaseConfig) : null
 
 // App Check debug mode is enabled only by Vite's local development build.
@@ -470,9 +472,55 @@ export async function updateFormClassification(
 }
 
 export async function getProgramComparisonData(year?: number): Promise<ProgramComparisonData> {
-  if (!functions) return { programs: [], years: [], truncated: false }
-  const callable = httpsCallable<{ year?: number }, ProgramComparisonData>(functions, 'getProgramComparisonData')
-  return (await callable(year ? { year } : {})).data
+  if (functions && programComparisonFunctionEnabled) {
+    try {
+      const callable = httpsCallable<{ year?: number }, ProgramComparisonData>(functions, 'getProgramComparisonData')
+      return (await callable(year ? { year } : {})).data
+    } catch {
+      // Spark projects may not have callable functions deployed; use owner-scoped Firestore reads below.
+    }
+  }
+  const userUid = auth?.currentUser?.uid
+  if (!db || !userUid) throw new Error('program-comparison-unauthenticated')
+  const allPrograms = await getOwnedPrograms(userUid)
+  const programs = year ? allPrograms.filter((program) => program.year === year) : allPrograms
+  const programIds = new Set(programs.map(({ id }) => id))
+  const formSnapshot = await getDocs(query(collection(db, 'forms'), where('ownerUid', '==', userUid)))
+  const matchingForms = formSnapshot.docs.filter((item) => {
+    const data = item.data()
+    return !data.deletedAt
+      && programIds.has(String(data.programId ?? ''))
+      && ['application', 'satisfaction', 'demand_survey'].includes(String(data.formType ?? ''))
+  })
+  const forms: ProgramComparisonFormInput[] = await Promise.all(matchingForms.map(async (item) => {
+    const data = item.data()
+    const responseSnapshot = await getDocs(query(collection(db, 'forms', item.id, 'responses'), limit(10_000)))
+    return {
+      id: item.id,
+      programId: String(data.programId ?? ''),
+      formType: data.formType as FormType,
+      questions: Array.isArray(data.questions) ? data.questions as FormQuestion[] : [],
+      responses: responseSnapshot.docs.map((response) => {
+        const responseData = response.data()
+        return {
+          id: response.id,
+          answers: responseData.answers && typeof responseData.answers === 'object'
+            ? responseData.answers as StoredFormResponse['answers']
+            : {},
+          submittedAt: responseData.submittedAt instanceof Timestamp
+            ? responseData.submittedAt.toDate().toISOString()
+            : String(responseData.submittedAt ?? ''),
+        }
+      }),
+      truncated: responseSnapshot.size >= 10_000,
+    }
+  }))
+  const metrics = aggregateProgramComparison(programs, forms)
+  return {
+    programs: metrics,
+    years: [...new Set(allPrograms.map(({ year: programYear }) => programYear))].sort((left, right) => right - left),
+    truncated: metrics.some(({ truncated }) => truncated),
+  }
 }
 
 export async function getDeletedForms(userUid: string) {
