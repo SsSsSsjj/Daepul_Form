@@ -4,6 +4,13 @@ import type { FormSettings, FormLifecycleStatus, IdentityCollection, Participati
 import { toLocalDateTimeInputValue } from './dateTime'
 import { GoogleSheetsConnector } from './GoogleSheetsConnector'
 
+const participationDescriptions: Record<ParticipationPolicy, string> = {
+  anyone: '로그인 없이 바로 참여합니다. 중복 제출을 제한하면 브라우저의 익명 식별값으로 구분합니다.',
+  authenticated: 'Google 또는 이메일로 대플폼에 로그인한 계정인지 확인합니다.',
+  kangnam: '로그인 계정의 인증된 이메일이 @kangnam.ac.kr로 끝나는지 확인합니다.',
+  allowlist: '로그인 계정의 인증된 이메일이 아래 허용 목록에 있는지 확인합니다.',
+}
+
 export function FormPolicyEditor({
   value,
   previewTitle,
@@ -41,18 +48,24 @@ export function FormPolicyEditor({
     <section>
       <h3><Users/> 참여 대상</h3>
       <label>참여 정책
-        <select value={value.access.participation} onChange={(event) => updateAccess({ participation: event.target.value as ParticipationPolicy })}>
-          <option value="anyone">누구나 참여</option>
-          <option value="authenticated">대플 로그인 사용자</option>
-          <option value="kangnam">강남대학교 구성원</option>
-          <option value="allowlist">특정 계정</option>
+        <select value={value.access.participation} onChange={(event) => {
+          const participation = event.target.value as ParticipationPolicy
+          updateAccess({
+            participation,
+            identityCollection: participation === 'anyone' && value.access.identityCollection === 'verified_email'
+              ? 'anonymous'
+              : value.access.identityCollection,
+          })
+        }}>
+          <option value="anyone">로그인 없이 누구나</option>
+          <option value="authenticated">대플폼 로그인 계정만</option>
+          <option value="kangnam">강남대 인증 이메일 계정만</option>
+          <option value="allowlist">지정한 이메일 계정만</option>
         </select>
       </label>
+      <small className="participation-policy-help">{participationDescriptions[value.access.participation]}</small>
       {value.access.participation === 'allowlist' && <label>허용 이메일
         <textarea value={value.access.allowedEmails.join('\n')} onChange={(event) => updateAccess({ allowedEmails: event.target.value.split(/\s+/).filter(Boolean) })} placeholder="한 줄에 하나씩 입력"/>
-      </label>}
-      {value.access.participation === 'allowlist' && <label>허용 그룹 ID
-        <textarea value={value.access.allowedGroups.join('\n')} onChange={(event) => updateAccess({ allowedGroups: event.target.value.split(/\s+/).filter(Boolean) })} placeholder="관리자가 계정 클레임에 부여한 그룹 ID"/>
       </label>}
       <label>응답자 정보
         <select value={value.access.identityCollection} onChange={(event) => updateAccess({ identityCollection: event.target.value as IdentityCollection })}>

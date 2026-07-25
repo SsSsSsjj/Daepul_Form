@@ -65,4 +65,30 @@ describe('FormPolicyEditor branding guidance', () => {
       branding: expect.objectContaining({ accentColor: '#a61b1b' }),
     }))
   })
+
+  it('explains how each participation policy is enforced', () => {
+    const onChange = vi.fn()
+    render(<FormPolicyEditor value={defaultFormSettings} onChange={onChange}/>)
+
+    expect(screen.getByRole('option', { name: '로그인 없이 누구나' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '대플폼 로그인 계정만' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '강남대 인증 이메일 계정만' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '지정한 이메일 계정만' })).toBeInTheDocument()
+    expect(screen.getByText(/Google 또는 이메일로 대플폼에 로그인한 계정인지 확인/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('허용 그룹 ID')).not.toBeInTheDocument()
+  })
+
+  it('switches verified-email collection to anonymous for login-free participation', () => {
+    const onChange = vi.fn()
+    render(<FormPolicyEditor value={defaultFormSettings} onChange={onChange}/>)
+
+    fireEvent.change(screen.getByLabelText('참여 정책'), { target: { value: 'anyone' } })
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      access: expect.objectContaining({
+        participation: 'anyone',
+        identityCollection: 'anonymous',
+      }),
+    }))
+  })
 })

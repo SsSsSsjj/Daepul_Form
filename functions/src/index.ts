@@ -35,6 +35,7 @@ import {
   type SheetsResponsePayload,
 } from './googleSheets'
 import { questionsOnResponseRoute } from './responseRouting'
+import { participantIsAllowed } from './participation'
 
 type Response = Parameters<Parameters<typeof onRequest>[0]>[1]
 
@@ -230,26 +231,6 @@ type SubmissionPayload = {
 
 function stringValue(value: unknown, maximum = 200) {
   return typeof value === 'string' ? value.trim().slice(0, maximum) : ''
-}
-
-function participantIsAllowed(
-  access: Record<string, unknown>,
-  token: Record<string, unknown>,
-  anonymous: boolean,
-) {
-  const participation = stringValue(access.participation)
-  const email = stringValue(token.email).toLowerCase()
-  const verified = token.email_verified === true
-  if (participation === 'anyone') return true
-  if (participation === 'authenticated') return !anonymous
-  if (participation === 'kangnam') return verified && email.endsWith('@kangnam.ac.kr')
-  if (participation === 'allowlist') {
-    const allowed = Array.isArray(access.allowedEmails) ? access.allowedEmails.map((value) => stringValue(value).toLowerCase()) : []
-    const allowedGroups = Array.isArray(access.allowedGroups) ? access.allowedGroups.map((value) => stringValue(value)) : []
-    const userGroups = Array.isArray(token.groups) ? token.groups.map((value) => stringValue(value)) : []
-    return verified && (allowed.includes(email) || allowedGroups.some((group) => userGroups.includes(group)))
-  }
-  return !anonymous
 }
 
 function validateAnswersAgainstQuestions(questions: unknown, answers: Record<string, unknown>) {

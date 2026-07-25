@@ -9,7 +9,7 @@ import {
   aiFailureMessage, completeEmailSignIn, deleteFormRecord, deleteResponseDraft, discardEmailSignInLink, firebaseConfigured, generateFormFromDocuments,
   emptyDeletedForms, getDeletedForms, getFormDeliveryStatus, getFormVersions, getOwnResponse, getOwnedForms, getPendingEmailAddress, getPublicResultSummary, getPublishedForm, hasEmailSignInLink, permanentlyDeleteForm,
   hasSubmittedResponse, loadResponseDraft, loginFailureMessage, logout, observeAuthState, publishFormRecord, requestEmailSignInLink,
-  manageFormResponses, queryFormResponses, restoreFormRecord, retryFormDelivery, saveAnalysisRecord, saveResponseDraft, setFormCollaborator, signInWithGoogle, summarizeResponses,
+  manageFormResponses, queryFormResponses, restoreFormRecord, retryFormDelivery, saveAnalysisRecord, saveResponseDraft, setFormCollaborator, signInAsGuest, signInWithGoogle, summarizeResponses,
   submitResponseOnce, updateFormLifecycle, updateFormSchedule, updateOwnResponse, uploadFormImage, uploadResponseAttachment, type FirebaseUser, type LoginProvider,
 } from './firebase'
 import { defaultFormSettings, type AnswerValue, type FormQuestion, type FormSettings, type FormType, type ProgramInfo, type QuestionSummary, type QuizResult, type ResponseAttachment, type ResponsePage, type ResponseQuery, type StoredFormResponse } from './types'
@@ -164,6 +164,7 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [authError, setAuthError] = useState('')
+  const [guestSignInStatus, setGuestSignInStatus] = useState<'idle' | 'loading' | 'done'>('idle')
   const [loginProvider, setLoginProvider] = useState<LoginProvider | null>(null)
   const [emailLinkMode, setEmailLinkMode] = useState<EmailLinkMode>(() => hasEmailSignInLink() ? 'checking' : 'none')
   const [page, setPage] = useState<Page>('create')
@@ -260,6 +261,14 @@ export default function App() {
   const summaries = useMemo(() => responsePage?.summaries ?? analyzeStoredResponses(questions, responses), [questions, responses, responsePage])
 
   useEffect(() => observeAuthState((nextUser) => { setUser(nextUser); setAuthReady(true) }), [])
+  useEffect(() => {
+    if (!authReady || !requestedFormId || user || guestSignInStatus !== 'idle' || emailLinkMode !== 'none') return
+    setGuestSignInStatus('loading')
+    void signInAsGuest()
+      .then(setUser)
+      .catch(() => setAuthError('비로그인 참여 세션을 시작하지 못했습니다. 잠시 후 다시 시도하거나 로그인해 주세요.'))
+      .finally(() => setGuestSignInStatus('done'))
+  }, [authReady, emailLinkMode, guestSignInStatus, requestedFormId, user])
   useEffect(() => {
     if (requestedFormId) return
     try {
@@ -684,8 +693,9 @@ export default function App() {
     }
   }
 
-  if (!authReady || emailLinkMode === 'checking') return <div className="center"><LoaderCircle className="spin" /></div>
+  if (!authReady || emailLinkMode === 'checking' || (requestedFormId && !user && guestSignInStatus !== 'done')) return <div className="center"><LoaderCircle className="spin" /></div>
   if (emailLinkMode === 'needs-email' || !user) return <Login publicForm={Boolean(requestedFormId)} loadingProvider={loginProvider} error={authError} initialEmail={getPendingEmailAddress()} completingEmailLink={emailLinkMode === 'needs-email'} onLogin={login} onStartNewEmailLink={startNewEmailLink} />
+  if (requestedFormId && publicFormLoaded && user.isAnonymous && formSettings.access.participation !== 'anyone') return <Login publicForm loadingProvider={loginProvider} error={authError} initialEmail={getPendingEmailAddress()} completingEmailLink={false} onLogin={login} onStartNewEmailLink={startNewEmailLink} />
   if (requestedFormId && publicFormLoaded && user) return <PublicForm user={user} formId={formId} program={program} questions={questions} theme={theme} endDate={endDate} settings={formSettings} preview={requestedPreview} publicResults={requestedPublicResults} onLogout={doLogout} />
   if (requestedFormId && authError) return <main className="public-shell"><div className="complete card"><h1>폼을 열 수 없습니다</h1><p>{authError}</p><a className="primary link" href="/">대플폼 홈으로</a></div></main>
   if (requestedFormId) return <div className="center"><LoaderCircle className="spin"/></div>

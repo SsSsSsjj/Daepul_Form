@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -28,6 +28,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install Firebase Functions dependencies
+        run: npm ci --prefix functions
 
       - name: Scan tracked files for exposed secrets
         run: npm run security:scan
@@ -49,6 +52,17 @@ jobs:
           VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
           VITE_FIREBASE_APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY: ${{ secrets.VITE_FIREBASE_APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY }}
           VITE_GOOGLE_SHEETS_APPS_SCRIPT_URL: ${{ secrets.VITE_GOOGLE_SHEETS_APPS_SCRIPT_URL }}
+
+      - name: Authenticate Firebase deployment
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DAEPULFORM }}
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@15.1.0
+
+      - name: Deploy response access enforcement
+        run: firebase deploy --only functions:submitFormResponse --project daepulform --non-interactive
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
