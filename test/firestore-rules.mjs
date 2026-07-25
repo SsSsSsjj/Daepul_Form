@@ -144,6 +144,28 @@ try {
     updatedAt: serverTimestamp(),
   }), 'The response counter cannot increment without a new response')
 
+  const programId = `program-${Date.now()}`
+  const ownerProgramRef = doc(owner.db, 'programs', programId)
+  const strangerProgramRef = doc(stranger.db, 'programs', programId)
+  await setDoc(ownerProgramRef, {
+    name: '진로 캠프',
+    year: 2026,
+    selectedHeadcount: 30,
+    ownerUid: owner.user.uid,
+    ownerEmail: owner.user.email,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  })
+  assert.equal((await getDoc(ownerProgramRef)).exists(), true, 'An owner can create and read a program')
+  await assertDenied(getDoc(strangerProgramRef), 'Another user cannot read an owner program')
+  await assertDenied(updateDoc(strangerProgramRef, { selectedHeadcount: 99 }), 'Another user cannot edit an owner program')
+  await assertDenied(setDoc(doc(stranger.db, 'programs', `forged-${Date.now()}`), {
+    name: 'forged',
+    year: 2026,
+    ownerUid: owner.user.uid,
+  }), 'A user cannot create a program for another owner')
+  await deleteDoc(ownerProgramRef)
+
   await deleteDoc(formRef)
   console.log('Firestore response rules test passed')
 } finally {

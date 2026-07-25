@@ -11,7 +11,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions'
 import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage'
 import {
   defaultFormSettings,
-  type FormQuestion, type FormSettings, type FormType, type GeneratedForm, type ProgramInfo,
+  type FormQuestion, type FormSettings, type FormType, type GeneratedForm, type ProgramComparisonData, type ProgramInfo, type ProgramRecord,
   type ResponseAttachment, type ResponseDraft, type ResponsePage, type ResponseQuery, type ResponseTopic,
   type ResultStats, type StoredFormResponse,
 } from './types'
@@ -250,8 +250,8 @@ function expirationFromSurveyEnd(surveyEndDate: string) {
   return Timestamp.fromDate(expiration)
 }
 
-export async function publishFormRecord({ formId, owner, program, questions, surveyEndDate, formType = 'general', theme = 'green', settings = defaultFormSettings, checkForExistingResponses = false }: {
-  formId: string; owner: User; program: ProgramInfo; questions: FormQuestion[]; surveyEndDate: string; formType?: FormType; theme?: string; settings?: FormSettings; checkForExistingResponses?: boolean
+export async function publishFormRecord({ formId, owner, program, programId, questions, surveyEndDate, formType = 'general', theme = 'green', settings = defaultFormSettings, checkForExistingResponses = false }: {
+  formId: string; owner: User; program: ProgramInfo; programId?: string; questions: FormQuestion[]; surveyEndDate: string; formType?: FormType; theme?: string; settings?: FormSettings; checkForExistingResponses?: boolean
 }) {
   if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
   if (settings.publicSlug) {
@@ -304,6 +304,7 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
     ownerUid: owner.uid,
     ownerEmail: owner.email,
     program,
+    programId: programId ?? null,
     questions: publicQuestions,
     formType,
     theme,
@@ -317,6 +318,7 @@ export async function publishFormRecord({ formId, owner, program, questions, sur
   await setDoc(doc(db, 'forms', targetFormId, 'versions', String(nextVersion)), {
     version: nextVersion,
     program,
+    programId: programId ?? null,
     questions,
     formType,
     theme,
@@ -367,6 +369,7 @@ export async function getPublishedForm(formId: string, includePrivate = false) {
   return {
     id: snapshot.id,
     program: data.program as ProgramInfo,
+    programId: String(data.programId ?? ''),
     questions: data.questions as FormQuestion[],
     formType: (data.formType ?? 'general') as FormType, theme: String(data.theme ?? 'green'),
     settings: { ...defaultFormSettings, ...(data.settings ?? {}) } as FormSettings,
@@ -390,6 +393,8 @@ export async function getOwnedForms(userUid: string) {
       maxResponses: Number(data.settings?.submission?.maxResponses ?? 0),
       publicSlug: String(data.settings?.publicSlug ?? ''),
       responseCount: Number(data.responseCount ?? 0),
+      formType: (data.formType ?? 'general') as FormType,
+      programId: String(data.programId ?? ''),
       organizationShared: false,
       workspaceName: String(data.settings?.workspace?.name ?? ''),
       ownerEmail: String(data.ownerEmail ?? ''),
@@ -404,6 +409,70 @@ export async function getOwnedForms(userUid: string) {
   } catch {
     return owned
   }
+}
+
+export async function getOwnedPrograms(userUid: string): Promise<ProgramRecord[]> {
+  if (!db) return []
+  const snapshot = await getDocs(query(collection(db, 'programs'), where('ownerUid', '==', userUid)))
+  return snapshot.docs.map((item) => {
+    const data = item.data()
+    return {
+      id: item.id,
+      name: String(data.name ?? ''),
+      year: Number(data.year ?? new Date().getFullYear()),
+      selectedHeadcount: Number(data.selectedHeadcount) > 0 ? Number(data.selectedHeadcount) : undefined,
+      ownerUid: String(data.ownerUid ?? ''),
+      ownerEmail: String(data.ownerEmail ?? ''),
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : '',
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : '',
+    }
+  }).sort((left, right) => right.year - left.year || left.name.localeCompare(right.name, 'ko'))
+}
+
+export async function saveProgramRecord(
+  owner: User,
+  value: Pick<ProgramRecord, 'name' | 'year' | 'selectedHeadcount'> & { id?: string },
+): Promise<ProgramRecord> {
+  if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
+  const name = value.name.trim()
+  const year = Math.trunc(value.year)
+  const selectedHeadcount = value.selectedHeadcount && value.selectedHeadcount > 0
+    ? Math.trunc(value.selectedHeadcount)
+    : undefined
+  if (!name || year < 2000 || year > 2100) throw new Error('invalid-program')
+  const id = value.id || `program-${crypto.randomUUID().slice(0, 12)}`
+  const reference = doc(db, 'programs', id)
+  const existing = await getDoc(reference)
+  const payload = {
+    name,
+    year,
+    selectedHeadcount: selectedHeadcount ?? null,
+    ownerUid: owner.uid,
+    ownerEmail: owner.email ?? '',
+    updatedAt: serverTimestamp(),
+    ...(existing.exists() ? {} : { createdAt: serverTimestamp() }),
+  }
+  await setDoc(reference, payload, { merge: true })
+  return { id, name, year, selectedHeadcount, ownerUid: owner.uid, ownerEmail: owner.email ?? '' }
+}
+
+export async function updateFormClassification(
+  formId: string,
+  value: { programId: string; formType: FormType; questions?: FormQuestion[] },
+) {
+  if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
+  await updateDoc(doc(db, 'forms', formId), {
+    programId: value.programId || null,
+    formType: value.formType,
+    ...(value.questions ? { questions: value.questions } : {}),
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export async function getProgramComparisonData(year?: number): Promise<ProgramComparisonData> {
+  if (!functions) return { programs: [], years: [], truncated: false }
+  const callable = httpsCallable<{ year?: number }, ProgramComparisonData>(functions, 'getProgramComparisonData')
+  return (await callable(year ? { year } : {})).data
 }
 
 export async function getDeletedForms(userUid: string) {

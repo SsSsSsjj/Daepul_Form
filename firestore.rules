@@ -79,6 +79,26 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /programs/{programId} {
+      allow create: if creatorSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.year is int
+        && request.resource.data.year >= 2000
+        && request.resource.data.year <= 2100;
+      allow read: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow update: if creatorSignedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.year is int
+        && request.resource.data.year >= 2000
+        && request.resource.data.year <= 2100;
+      allow delete: if creatorSignedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
     match /forms/{formId} {
       allow create: if creatorSignedIn()
         && request.resource.data.ownerUid == request.auth.uid

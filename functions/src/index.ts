@@ -36,6 +36,7 @@ import {
 } from './googleSheets'
 import { questionsOnResponseRoute } from './responseRouting'
 import { participantIsAllowed } from './participation'
+import { aggregateProgramComparison } from './programComparison'
 
 type Response = Parameters<Parameters<typeof onRequest>[0]>[1]
 
@@ -1042,6 +1043,68 @@ export const queryFormResponses = onCall(responseCallableOptions, async (request
     dailyCounts: [...dailyMap.entries()].sort(([left], [right]) => left.localeCompare(right))
       .slice(-30).map(([date, count]) => ({ date, count })),
     truncated: responseSnapshot.size >= 10_000,
+  }
+})
+
+export const getProgramComparisonData = onCall(responseCallableOptions, async (request) => {
+  if (!request.auth || request.auth.token.firebase?.sign_in_provider === 'anonymous') {
+    throw new HttpsError('unauthenticated', '프로그램 비교를 보려면 로그인이 필요합니다.')
+  }
+  const database = getFirestore()
+  const requestedYear = Number(request.data?.year)
+  const programSnapshot = await database.collection('programs')
+    .where('ownerUid', '==', request.auth.uid)
+    .get()
+  const programs = programSnapshot.docs
+    .map((item) => {
+      const data = item.data()
+      const selectedHeadcount = Number(data.selectedHeadcount)
+      return {
+        id: item.id,
+        name: stringValue(data.name, 200),
+        year: Number(data.year),
+        selectedHeadcount: selectedHeadcount > 0 ? selectedHeadcount : undefined,
+      }
+    })
+    .filter((program) => !Number.isFinite(requestedYear) || program.year === requestedYear)
+  const programIds = new Set(programs.map(({ id }) => id))
+  if (!programIds.size) return { programs: [], years: [], truncated: false }
+
+  const formSnapshot = await database.collection('forms').where('ownerUid', '==', request.auth.uid).get()
+  const matchingForms = formSnapshot.docs.filter((item) => {
+    const data = item.data()
+    return !data.deletedAt
+      && programIds.has(stringValue(data.programId, 120))
+      && ['application', 'satisfaction', 'demand_survey'].includes(stringValue(data.formType, 30))
+  })
+  const forms = await Promise.all(matchingForms.map(async (item) => {
+    const data = item.data()
+    const responseSnapshot = await item.ref.collection('responses').limit(10_000).get()
+    return {
+      id: item.id,
+      programId: stringValue(data.programId, 120),
+      formType: stringValue(data.formType, 30) as 'application' | 'satisfaction' | 'demand_survey',
+      questions: Array.isArray(data.questions)
+        ? data.questions.map((question: Record<string, unknown>) => ({
+            id: Number(question.id),
+            analyticsRole: stringValue(question.analyticsRole, 40),
+          }))
+        : [],
+      responses: responseSnapshot.docs.map((response) => ({
+        answers: response.data().answers && typeof response.data().answers === 'object'
+          ? response.data().answers as Record<string, unknown>
+          : {},
+      })),
+      truncated: responseSnapshot.size >= 10_000,
+    }
+  }))
+  const metrics = aggregateProgramComparison(programs, forms)
+  const allYears = [...new Set(programSnapshot.docs.map((item) => Number(item.data().year)).filter(Number.isFinite))]
+    .sort((left, right) => right - left)
+  return {
+    programs: metrics,
+    years: allYears,
+    truncated: metrics.some(({ truncated }) => truncated),
   }
 })
 
