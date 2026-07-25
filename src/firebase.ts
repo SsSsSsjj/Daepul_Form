@@ -31,6 +31,7 @@ const firebaseConfig = {
 
 export const firebaseConfigured = Object.values(firebaseConfig).every(Boolean)
 export const demoAuthEnabled = import.meta.env.VITE_ENABLE_DEMO_AUTH === 'true'
+const organizationFormsFunctionEnabled = import.meta.env.VITE_ENABLE_ORGANIZATION_FORMS_FUNCTION === 'true'
 const firebaseApp = firebaseConfigured ? initializeApp(firebaseConfig) : null
 
 // App Check debug mode is enabled only by Vite's local development build.
@@ -202,6 +203,32 @@ export function aiFailureMessage(error: unknown) {
   return 'AI 문서 분석을 실행하지 못했습니다. 잠시 후 다시 시도해 주세요.'
 }
 
+const aiRequestTimeoutMs = 300_000
+const aiModelFallbackOrder = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'] as const
+
+function isRetryableAiError(error: unknown) {
+  const details = error as { code?: unknown; customErrorData?: { status?: unknown } }
+  const code = typeof details?.code === 'string' ? details.code : ''
+  const status = Number(details?.customErrorData?.status ?? 0)
+  return (error instanceof Error && error.name === 'AbortError')
+    || (code === 'fetch-error' && (status === 408 || status === 429 || status >= 500))
+}
+
+async function withAiModelFallback<T>(request: (modelName: string) => Promise<T>): Promise<T> {
+  let lastError: unknown
+  for (const [index, modelName] of aiModelFallbackOrder.entries()) {
+    try {
+      return await request(modelName)
+    } catch (error) {
+      lastError = error
+      if (!isRetryableAiError(error) || index === aiModelFallbackOrder.length - 1) throw error
+      const backoffMs = 1_000 * (2 ** index) + Math.floor(Math.random() * 500)
+      await new Promise((resolve) => setTimeout(resolve, backoffMs))
+    }
+  }
+  throw lastError
+}
+
 export async function logout() {
   if (auth) await signOut(auth)
 }
@@ -357,7 +384,7 @@ export async function getOwnedForms(userUid: string) {
       ownerEmail: String(data.ownerEmail ?? ''),
     }
   })
-  if (!functions) return owned
+  if (!functions || !organizationFormsFunctionEnabled) return owned
   try {
     const shared = await httpsCallable<Record<string, never>, { forms: typeof owned }>(functions, 'listOrganizationForms')({})
     return [...owned, ...shared.data.forms
@@ -838,7 +865,6 @@ function fileToBase64(file: File) {
 export async function generateFormFromDocuments(files: File[], memo: string): Promise<GeneratedForm> {
   if (!firebaseApp) throw new Error('Firebase가 설정되지 않았습니다.')
   const ai = getAI(firebaseApp, { backend: new GoogleAIBackend() })
-  const model = getGenerativeModel(ai, { model: 'gemini-3.5-flash', generationConfig: { responseMimeType: 'application/json', responseSchema: formSchema } })
   const parts = await Promise.all(files.map(async (file) => {
     if (!isHwpFile(file)) return { inlineData: { data: await fileToBase64(file), mimeType: file.type || 'application/pdf' } }
     try {
@@ -861,7 +887,10 @@ publicSlug는 폼 제목을 설명하는 짧은 영문 소문자·숫자·하이
 강남대학교 공식 행사·사업이면 suggestedTheme은 kangnam, 계절성이 명확하면 해당 계절, 아니면 green을 사용하세요.
 문서에 없는 사실은 만들지 말고 문자열은 빈 값, 숫자는 0, 보수적인 기본값을 사용한 뒤 reviewNotes에 확인할 내용을 남기세요.
 개인정보 질문은 꼭 필요한 최소한만 만드세요. 메모: ${memo || '없음'}`
-  const result = await model.generateContent([...parts, { text: prompt }])
+  const result = await withAiModelFallback((modelName) => getGenerativeModel(ai, {
+    model: modelName,
+    generationConfig: { responseMimeType: 'application/json', responseSchema: formSchema },
+  }, { timeout: aiRequestTimeoutMs }).generateContent([...parts, { text: prompt }]))
   type AiQuestion = Omit<FormQuestion, 'id' | 'branch'> & {
     branchRules?: Array<{ option: string; action: 'next' | 'section' | 'submit'; targetSectionId: string }>
   }
@@ -916,9 +945,11 @@ export async function summarizeResponses(responses: string[]): Promise<ResponseT
     title: Schema.string(), category: Schema.enumString({ enum: ['긍정 의견', '개선 의견', '후속 요청', '기타 의견'] }),
     summary: Schema.string(), sourceIds: Schema.array({ items: Schema.integer() }), reportSentence: Schema.string(),
   } }) })
-  const model = getGenerativeModel(ai, { model: 'gemini-3.5-flash', generationConfig: { responseMimeType: 'application/json', responseSchema: schema } })
   const numbered = responses.map((text, index) => `${index}: ${text}`).join('\n')
-  const result = await model.generateContent(`다음 익명 자유응답을 주제별로 요약하세요. sourceIds에는 근거가 된 0부터 시작하는 응답 번호만 넣고, 근거 없는 판단은 하지 마세요.\n${numbered}`)
+  const result = await withAiModelFallback((modelName) => getGenerativeModel(ai, {
+    model: modelName,
+    generationConfig: { responseMimeType: 'application/json', responseSchema: schema },
+  }, { timeout: aiRequestTimeoutMs }).generateContent(`다음 익명 자유응답을 주제별로 요약하세요. sourceIds에는 근거가 된 0부터 시작하는 응답 번호만 넣고, 근거 없는 판단은 하지 마세요.\n${numbered}`))
   const parsed = JSON.parse(result.response.text()) as Array<Omit<ResponseTopic, 'id'>>
   return parsed.map((topic, index) => ({ ...topic, id: `ai-${index}` }))
 }
