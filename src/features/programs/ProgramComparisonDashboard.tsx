@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { ArrowLeft, BarChart3, LoaderCircle, Sparkles, TrendingDown, Trophy, Users } from 'lucide-react'
 import type { ProgramComparisonData, ProgramComparisonMetric, ResponseTopic } from '../../types'
 import {
@@ -34,6 +34,81 @@ function MetricCard({
     <strong>{program?.programName ?? '집계 없음'}</strong>
     <small>{program ? `${value(program)} · 표본 ${sample(program)}명` : '조건에 맞는 프로그램이 없습니다.'}</small>
   </article>
+}
+
+function ProgramVolumeChart({ programs }: { programs: ProgramComparisonMetric[] }) {
+  const maximum = Math.max(1, ...programs.flatMap((program) => [
+    program.demandResponses,
+    program.applicationResponses,
+    program.satisfactionResponses,
+  ]))
+  return <section className="card comparison-chart volume-chart" aria-labelledby="volume-chart-title">
+    <header><div><span className="eyebrow">PROGRAM VOLUME</span><h2 id="volume-chart-title">프로그램별 관심·신청·응답 규모</h2></div>
+      <div className="chart-legend"><span className="demand">수요</span><span className="application">신청</span><span className="satisfaction">만족도 응답</span></div>
+    </header>
+    <div className="volume-chart-body">{programs.map((program) => <article key={program.programId}>
+      <b>{program.programName}</b>
+      {([
+        ['demand', program.demandResponses, '수요'],
+        ['application', program.applicationResponses, '신청'],
+        ['satisfaction', program.satisfactionResponses, '만족도'],
+      ] as const).map(([kind, value, label]) => <div className="volume-bar" key={kind}>
+        <span>{label}</span><i><b className={kind} style={{ width: `${value / maximum * 100}%` }}/></i><strong>{value}명</strong>
+      </div>)}
+    </article>)}</div>
+    {!programs.length && <p className="empty-copy">표시할 프로그램이 없습니다.</p>}
+  </section>
+}
+
+function ResponseDonut({ program }: { program?: ProgramComparisonMetric }) {
+  const rawRate = program?.satisfactionResponseRate ?? 0
+  const chartRate = Math.max(0, Math.min(1, rawRate))
+  return <section className="card comparison-chart donut-chart" aria-labelledby="response-donut-title">
+    <header><div><span className="eyebrow">RESPONSE COVERAGE</span><h2 id="response-donut-title">만족도 응답률</h2></div></header>
+    {program ? <div className="donut-chart-body">
+      <div className="donut" role="img" aria-label={`${program.programName} 만족도 응답률 ${percent(rawRate)}`} style={{ '--donut-rate': `${chartRate * 360}deg` } as CSSProperties}>
+        <span><strong>{percent(rawRate)}</strong><small>응답률</small></span>
+      </div>
+      <div><h3>{program.programName}</h3><p><b>{program.satisfactionResponses}명</b> 응답 / 선발 {program.selectedHeadcount ?? '-'}명</p>
+        <small>실제 출석률이 아닌 선발 인원 대비 만족도 응답 비율입니다.</small></div>
+    </div> : <p className="empty-copy">프로그램을 선택해 주세요.</p>}
+  </section>
+}
+
+function GradePopularityChart({ program }: { program?: ProgramComparisonMetric }) {
+  const grades = program
+    ? Object.entries(program.gradeBreakdown).filter(([grade]) => grade !== '학년 미응답')
+    : []
+  const maximum = Math.max(1, ...grades.flatMap(([, metric]) => [metric.applicationResponses, metric.satisfactionResponses]))
+  return <section className="card comparison-chart grade-chart" aria-labelledby="grade-chart-title">
+    <header><div><span className="eyebrow">GRADE POPULARITY</span><h2 id="grade-chart-title">학년별 신청·만족도 응답</h2></div>
+      <div className="chart-legend"><span className="application">신청</span><span className="satisfaction">만족도 응답</span></div></header>
+    <div className="grade-chart-body">{grades.map(([grade, metric]) => <div key={grade}>
+      <b>{grade}</b>
+      <span><i className="application" style={{ width: `${metric.applicationResponses / maximum * 100}%` }}/><strong>{metric.applicationResponses}</strong></span>
+      <span><i className="satisfaction" style={{ width: `${metric.satisfactionResponses / maximum * 100}%` }}/><strong>{metric.satisfactionResponses}</strong></span>
+    </div>)}</div>
+    {!grades.length && <p className="empty-copy">학년별 응답 데이터가 없습니다.</p>}
+  </section>
+}
+
+function YearlyRatingChart({ items }: { items: ProgramComparisonMetric[] }) {
+  const points = items.filter((item) => item.satisfactionAverage !== undefined)
+  const x = (index: number) => points.length <= 1 ? 300 : 55 + index * (520 / (points.length - 1))
+  const y = (rating: number) => 215 - (rating - 1) / 4 * 160
+  const polyline = points.map((item, index) => `${x(index)},${y(item.satisfactionAverage ?? 1)}`).join(' ')
+  return <section className="card comparison-chart yearly-line-chart" aria-labelledby="yearly-rating-title">
+    <header><div><span className="eyebrow">YEARLY TREND</span><h2 id="yearly-rating-title">연도별 평균 만족도 변화</h2></div></header>
+    {points.length >= 2 ? <svg viewBox="0 0 620 260" role="img" aria-label={`${points[0].programName} 연도별 평균 만족도 선그래프`}>
+      {[1, 2, 3, 4, 5].map((rating) => <g key={rating}><line x1="55" x2="575" y1={y(rating)} y2={y(rating)} /><text x="35" y={y(rating) + 4}>{rating}</text></g>)}
+      <polyline className="rating-line" points={polyline}/>
+      {points.map((item, index) => <g className="rating-point" key={item.programId}>
+        <circle cx={x(index)} cy={y(item.satisfactionAverage ?? 1)} r="7"/>
+        <text className="point-score" x={x(index)} y={y(item.satisfactionAverage ?? 1) - 14}>{score(item.satisfactionAverage)}</text>
+        <text className="point-year" x={x(index)} y="244">{item.year}</text>
+      </g>)}
+    </svg> : <p className="empty-copy">같은 프로그램의 연도별 데이터가 2개 이상 필요합니다.</p>}
+  </section>
 }
 
 export function ProgramComparisonDashboard({
@@ -89,6 +164,12 @@ export function ProgramComparisonDashboard({
       .filter((items) => items.length > 1)
       .map((items) => items.sort((left, right) => left.year - right.year))
   }, [data.programs])
+  const selectedYearlyItems = useMemo(() => {
+    if (!selected) return []
+    return data.programs
+      .filter((program) => program.programName.trim().toLocaleLowerCase('ko') === selected.programName.trim().toLocaleLowerCase('ko'))
+      .sort((left, right) => left.year - right.year)
+  }, [data.programs, selected])
 
   const analyze = async () => {
     if (!selected?.improvementComments.length || topics[selected.programId]) return
@@ -152,6 +233,14 @@ export function ProgramComparisonDashboard({
         <MetricCard label="신청 경쟁도 1위" program={topCompetition} value={(item) => percent(item.applicationRatio)} sample={(item) => item.applicationResponses} icon={<Trophy/>}/>
         <MetricCard label="평균 만족도 1위" program={topSatisfaction} value={(item) => `${score(item.satisfactionAverage)}점`} sample={(item) => item.satisfactionSampleSize} icon={<Sparkles/>}/>
       </div>
+      <section className="comparison-visuals" aria-label="프로그램 비교 그래프">
+        <div className="card chart-program-picker"><label>세부 분석 프로그램<select value={selected?.programId ?? ''} onChange={(event) => setProgramId(event.target.value)}>
+          {filtered.map((program) => <option value={program.programId} key={program.programId}>{program.year} · {program.programName}</option>)}
+        </select></label><small>도넛·학년별·연도별 그래프에 적용됩니다.</small></div>
+        <ProgramVolumeChart programs={filtered}/>
+        <div className="comparison-chart-grid"><ResponseDonut program={selected}/><GradePopularityChart program={selected}/></div>
+        <YearlyRatingChart items={selectedYearlyItems}/>
+      </section>
       <section className="card comparison-table-card">
         <h2>프로그램별 핵심 지표</h2>
         <div className="comparison-table-scroll"><table className="comparison-table">

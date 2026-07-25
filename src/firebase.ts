@@ -444,7 +444,6 @@ export async function saveProgramRecord(
   if (!name || year < 2000 || year > 2100) throw new Error('invalid-program')
   const id = value.id || `program-${crypto.randomUUID().slice(0, 12)}`
   const reference = doc(db, 'programs', id)
-  const existing = await getDoc(reference)
   const payload = {
     name,
     year,
@@ -452,7 +451,7 @@ export async function saveProgramRecord(
     ownerUid: owner.uid,
     ownerEmail: owner.email ?? '',
     updatedAt: serverTimestamp(),
-    ...(existing.exists() ? {} : { createdAt: serverTimestamp() }),
+    ...(!value.id ? { createdAt: serverTimestamp() } : {}),
   }
   await setDoc(reference, payload, { merge: true })
   return { id, name, year, selectedHeadcount, ownerUid: owner.uid, ownerEmail: owner.email ?? '' }
