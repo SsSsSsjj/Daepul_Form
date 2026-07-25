@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProgramComparisonMetric } from '../../types'
 import {
+  aggregateProgramComparison,
   ensureAnalyticsQuestions,
   filterProgramMetrics,
   improvementKeywords,
@@ -27,6 +28,39 @@ const metric = (change: Partial<ProgramComparisonMetric>): ProgramComparisonMetr
 })
 
 describe('program comparison model', () => {
+  it('aggregates owner-readable Firestore forms without a callable function', () => {
+    const [result] = aggregateProgramComparison([
+      { id: 'p1', name: '진로 캠프', year: 2026, selectedHeadcount: 20 },
+    ], [
+      {
+        id: 'application',
+        programId: 'p1',
+        formType: 'application',
+        questions: [{ id: 1, label: '학년', type: 'select', required: true, analyticsRole: 'grade' }],
+        responses: [{ id: 'a1', answers: { 1: '2학년' } }],
+      },
+      {
+        id: 'satisfaction',
+        programId: 'p1',
+        formType: 'satisfaction',
+        questions: [
+          { id: 1, label: '학년', type: 'select', required: true, analyticsRole: 'grade' },
+          { id: 2, label: '만족도', type: 'rating', required: true, analyticsRole: 'overall_satisfaction' },
+          { id: 3, label: '개선', type: 'long_text', required: false, analyticsRole: 'improvement' },
+        ],
+        responses: [{ id: 's1', answers: { 1: '2학년', 2: 4, 3: '시간을 늘려 주세요.' } }],
+      },
+    ])
+    expect(result).toMatchObject({
+      applicationResponses: 1,
+      satisfactionResponses: 1,
+      applicationRatio: .05,
+      satisfactionResponseRate: .05,
+      satisfactionAverage: 4,
+      improvementComments: ['시간을 늘려 주세요.'],
+    })
+  })
+
   it('adds standard questions once for each categorized form type', () => {
     const satisfaction = ensureAnalyticsQuestions([], 'satisfaction', 10)
     expect(satisfaction.map(({ analyticsRole }) => analyticsRole)).toEqual([
