@@ -67,6 +67,38 @@ try {
   })
   const ownerForms = await getDocs(query(collection(owner.db, 'forms'), where('ownerUid', '==', owner.user.uid)))
   assert.equal(ownerForms.docs.some((item) => item.id === formId), true, 'An owner can list their own forms')
+
+  const deliveryId = `delivery-${Date.now()}`
+  const adminDeliveryUrl = `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents/integrationDeliveries/${deliveryId}`
+  const adminDeliveryResponse = await fetch(adminDeliveryUrl, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer owner',
+    },
+    body: JSON.stringify({
+      fields: {
+        formId: { stringValue: formId },
+        status: { stringValue: 'sent' },
+        targetUrl: { stringValue: 'https://example.test/webhook' },
+      },
+    }),
+  })
+  assert.equal(adminDeliveryResponse.ok, true, 'Cloud Functions Admin SDK equivalent can create a delivery record')
+  const ownerDeliveries = await getDocs(query(
+    collection(owner.db, 'integrationDeliveries'),
+    where('formId', '==', formId),
+  ))
+  assert.equal(ownerDeliveries.docs.some((item) => item.id === deliveryId), true, 'A form owner can read delivery records')
+  await assertDenied(getDocs(query(
+    collection(stranger.db, 'integrationDeliveries'),
+    where('formId', '==', formId),
+  )), 'Another user cannot read delivery records')
+  await assertDenied(setDoc(doc(owner.db, 'integrationDeliveries', 'client-write'), {
+    formId,
+    status: 'queued',
+  }), 'A form owner cannot forge delivery records')
+
   const privateIntegrationRef = doc(owner.db, 'forms', formId, 'privateIntegrations', 'googleSheets')
   await assertDenied(getDoc(privateIntegrationRef), 'A form owner cannot read stored Google OAuth credentials')
   await assertDenied(setDoc(privateIntegrationRef, { refreshToken: 'must-not-be-client-readable' }), 'A form owner cannot write Google OAuth credentials')

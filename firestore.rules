@@ -144,6 +144,16 @@ service cloud.firestore {
       }
     }
 
+    match /mail/{deliveryId} {
+      allow read: if signedIn() && canManageForm(resource.data.formId);
+      allow write: if false;
+    }
+
+    match /integrationDeliveries/{deliveryId} {
+      allow read: if signedIn() && canManageForm(resource.data.formId);
+      allow write: if false;
+    }
+
     match /formDrafts/{draftId} {
       allow create: if creatorSignedIn() && request.resource.data.creatorUid == request.auth.uid;
       allow read, delete: if creatorSignedIn() && resource.data.creatorUid == request.auth.uid;

@@ -599,12 +599,36 @@ export async function getFormDeliveryStatus(formId: string): Promise<Array<{
   error: string
   attempts: number
 }>> {
-  if (!functions) throw new Error('Firebase Functions가 설정되지 않았습니다.')
-  const result = await httpsCallable<
-    { formId: string },
-    { deliveries: Array<{ id: string; source: 'mail' | 'integrationDeliveries'; status: string; type: string; error: string; attempts: number }> }
-  >(functions, 'getFormDeliveryStatus')({ formId })
-  return result.data.deliveries
+  type Delivery = { id: string; source: 'mail' | 'integrationDeliveries'; status: string; type: string; error: string; attempts: number }
+  if (functions) {
+    try {
+      const result = await httpsCallable<{ formId: string }, { deliveries: Delivery[] }>(
+        functions,
+        'getFormDeliveryStatus',
+      )({ formId })
+      return result.data.deliveries
+    } catch {
+      // Spark-plan projects cannot deploy callable functions. Fall back to an
+      // owner-authorized Firestore query so delivery monitoring still works.
+    }
+  }
+  if (!db) throw new Error('Firestore가 설정되지 않았습니다.')
+  const [mail, integrations] = await Promise.all([
+    getDocs(query(collection(db, 'mail'), where('formId', '==', formId), limit(50))),
+    getDocs(query(collection(db, 'integrationDeliveries'), where('formId', '==', formId), limit(50))),
+  ])
+  const summarize = (documents: typeof mail.docs, source: Delivery['source']): Delivery[] => documents.map((item) => {
+    const data = item.data()
+    return {
+      id: item.id,
+      source,
+      status: String(data.status ?? 'queued'),
+      type: String(data.notificationType ?? (data.targetUrl ? 'integration' : 'email')),
+      error: String(data.error ?? ''),
+      attempts: Number(data.attempts ?? 0),
+    }
+  })
+  return [...summarize(mail.docs, 'mail'), ...summarize(integrations.docs, 'integrationDeliveries')]
 }
 
 export async function retryFormDelivery(
