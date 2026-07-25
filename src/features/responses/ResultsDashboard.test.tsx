@@ -19,6 +19,24 @@ const summaries: QuestionSummary[] = [
 afterEach(cleanup)
 
 describe('ResultsDashboard', () => {
+  it('returns to the screen that opened the results dashboard', () => {
+    const onBack = vi.fn()
+    render(<ResultsDashboard
+      title="테스트 폼"
+      loading={false}
+      responses={responses}
+      questions={questions}
+      summaries={summaries}
+      message=""
+      sample
+      onBack={onBack}
+      onRefresh={vi.fn()}
+      onExportExcel={vi.fn()}
+    />)
+    fireEvent.click(screen.getByRole('button', { name: '이전 화면' }))
+    expect(onBack).toHaveBeenCalledOnce()
+  })
+
   it('exposes all four result views and the sample-data warning', () => {
     render(<ResultsDashboard
       title="테스트 폼"

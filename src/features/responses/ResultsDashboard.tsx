@@ -211,6 +211,7 @@ export function ResultsDashboard({
   message,
   sample = false,
   initialPage,
+  onBack,
   onRefresh,
   onExportExcel,
   onQuery,
@@ -226,6 +227,7 @@ export function ResultsDashboard({
   message: string
   sample?: boolean
   initialPage?: ResponsePage
+  onBack?: () => void
   onRefresh: () => void
   onExportExcel: (items: StoredFormResponse[], questions: FormQuestion[]) => void
   onQuery?: (query: ResponseQuery) => Promise<ResponsePage>
@@ -356,6 +358,7 @@ export function ResultsDashboard({
   }
 
   return <section className="results-dashboard" aria-busy={loading || serverLoading} ref={dashboardRef}>
+    {onBack && <button type="button" className="result-back-button" onClick={onBack}><ChevronLeft/> 이전 화면</button>}
     <div className="result-dashboard-head">
       <div><span className="eyebrow">RESPONSE DASHBOARD</span><h1>{title}</h1><p>응답을 요약·질문별·개별·표 형태로 확인합니다.</p></div>
       <div className="stat"><UserRound/><span>전체 응답</span><b>{(result.overallTotal ?? result.total).toLocaleString()}<small>명</small></b></div>
