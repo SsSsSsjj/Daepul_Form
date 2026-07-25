@@ -3,6 +3,7 @@ export type DemoMode = 'normal' | 'empty' | 'failure'
 export type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error'
 export type QuestionType = 'short_text' | 'long_text' | 'select' | 'checkbox' | 'consent' | 'rating' | 'number' | 'file'
 export type FormType = 'application' | 'satisfaction' | 'demand_survey' | 'general'
+export type AnalyticsRole = 'grade' | 'overall_satisfaction' | 'strength' | 'improvement'
 export type FormLifecycleStatus = 'draft' | 'scheduled' | 'open' | 'paused' | 'closed' | 'private'
 export type ParticipationPolicy = 'anyone' | 'authenticated' | 'kangnam' | 'allowlist'
 export type IdentityCollection = 'anonymous' | 'profile' | 'email_input' | 'verified_email'
@@ -157,6 +158,47 @@ export interface FormQuestion {
   correctAnswers?: Array<string | number | boolean>
   correctFeedback?: string
   incorrectFeedback?: string
+  analyticsRole?: AnalyticsRole
+}
+
+export interface ProgramRecord {
+  id: string
+  name: string
+  year: number
+  selectedHeadcount?: number
+  ownerUid?: string
+  ownerEmail?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface ProgramComparisonMetric {
+  programId: string
+  programName: string
+  year: number
+  selectedHeadcount?: number
+  demandResponses: number
+  applicationResponses: number
+  satisfactionResponses: number
+  applicationRatio?: number
+  satisfactionResponseRate?: number
+  satisfactionAverage?: number
+  satisfactionSampleSize: number
+  gradeBreakdown: Record<string, {
+    demandResponses: number
+    applicationResponses: number
+    satisfactionResponses: number
+    satisfactionAverage?: number
+    satisfactionSampleSize: number
+  }>
+  improvementComments: string[]
+  truncated: boolean
+}
+
+export interface ProgramComparisonData {
+  programs: ProgramComparisonMetric[]
+  years: number[]
+  truncated: boolean
 }
 
 export interface GeneratedForm {

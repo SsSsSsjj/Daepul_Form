@@ -7,28 +7,30 @@ import kangnamUniversityLogo from './assets/kangnam-university-logo-transparent.
 import kangnamWelcomeMascot from './assets/kangnam-welcome-mascot.png'
 import {
   aiFailureMessage, completeEmailSignIn, deleteFormRecord, deleteResponseDraft, discardEmailSignInLink, firebaseConfigured, generateFormFromDocuments,
-  emptyDeletedForms, getDeletedForms, getFormVersions, getOwnResponse, getOwnedForms, getPendingEmailAddress, getPublicResultSummary, getPublishedForm, hasEmailSignInLink, permanentlyDeleteForm,
+  emptyDeletedForms, getDeletedForms, getFormVersions, getOwnResponse, getOwnedForms, getOwnedPrograms, getPendingEmailAddress, getProgramComparisonData, getPublicResultSummary, getPublishedForm, hasEmailSignInLink, permanentlyDeleteForm,
   hasSubmittedResponse, loadResponseDraft, loginFailureMessage, logout, observeAuthState, publishFormRecord, requestEmailSignInLink,
   manageFormResponses, queryFormResponses, restoreFormRecord, saveAnalysisRecord, saveResponseDraft, setFormCollaborator, signInAsGuest, signInWithGoogle, summarizeResponses,
-  submitResponseOnce, updateFormLifecycle, updateFormSchedule, updateOwnResponse, uploadFormImage, uploadResponseAttachment, type FirebaseUser, type LoginProvider,
+  saveProgramRecord, submitResponseOnce, updateFormClassification, updateFormLifecycle, updateFormSchedule, updateOwnResponse, uploadFormImage, uploadResponseAttachment, type FirebaseUser, type LoginProvider,
 } from './firebase'
-import { defaultFormSettings, type AnswerValue, type FormQuestion, type FormSettings, type FormType, type ProgramInfo, type QuestionSummary, type QuizResult, type ResponseAttachment, type ResponsePage, type ResponseQuery, type StoredFormResponse } from './types'
+import { defaultFormSettings, type AnswerValue, type FormQuestion, type FormSettings, type FormType, type ProgramComparisonData, type ProgramInfo, type ProgramRecord, type QuestionSummary, type QuizResult, type ResponseAttachment, type ResponsePage, type ResponseQuery, type StoredFormResponse } from './types'
 import { ResultsDashboard } from './features/responses/ResultsDashboard'
 import { FormPolicyEditor } from './features/responses/FormPolicyEditor'
 import { createSampleResponses, getFormAvailability, normalizeFormSettings, settingsFromAiSuggestion, validateAnswers } from './features/responses/model'
 import { reorderQuestions } from './features/forms/reorderQuestions'
 import { answersForResponseRoute, branchTargetForSection, getQuestionSections, nextSectionId, resolveResponseRoute, routingWarnings, type QuestionSection } from './features/forms/conditionalRouting'
+import { ensureAnalyticsQuestions } from './features/programs/model'
+import { ProgramComparisonDashboard } from './features/programs/ProgramComparisonDashboard'
 
-type Page = 'create' | 'sample' | 'edit' | 'publish' | 'results' | 'manage'
+type Page = 'create' | 'sample' | 'edit' | 'publish' | 'results' | 'manage' | 'comparison'
 type CreationMode = 'ai' | 'manual'
 type Theme = 'green' | 'spring' | 'summer' | 'autumn' | 'winter' | 'kangnam' | 'blue' | 'coral'
 type SelectableTheme = Exclude<Theme, 'blue' | 'coral'>
-type OwnedForm = { id: string; title: string; published: boolean; responseCount: number; status?: string; startsAt?: string; closesAt?: string; maxResponses?: number; publicSlug?: string; organizationShared?: boolean; workspaceName?: string; ownerEmail?: string }
+type OwnedForm = { id: string; title: string; published: boolean; responseCount: number; formType: FormType; programId?: string; status?: string; startsAt?: string; closesAt?: string; maxResponses?: number; publicSlug?: string; organizationShared?: boolean; workspaceName?: string; ownerEmail?: string }
 type DeletedForm = { id: string; title: string; deletedAt: string }
 type EmailLinkMode = 'none' | 'checking' | 'needs-email'
 type SubmissionStatus = 'checking' | 'ready' | 'submitted-now' | 'already-submitted' | 'check-error'
 type PublicAnswerValue = string | boolean | number | string[]
-const creatorPages: Page[] = ['create', 'sample', 'edit', 'publish', 'results', 'manage']
+const creatorPages: Page[] = ['create', 'sample', 'edit', 'publish', 'results', 'manage', 'comparison']
 
 const emptyProgram: ProgramInfo = { programName: '', description: '', target: '', period: '', schedule: '', capacity: '', requirements: '', privacyConsent: '' }
 const serviceSampleProgram: ProgramInfo = { programName: '2026 강남대학교 진로·복학 지원 설문', description: '학적 상태에 따라 프로그램 경험 또는 복학 지원 수요를 묻는 조건부 섹션 예시 폼입니다.', target: '강남대학교 재학생·휴학생', period: '2026. 7. 1. ~ 7. 31.', schedule: '', capacity: '', requirements: '', privacyConsent: '' }
@@ -67,6 +69,7 @@ type CreatorDraft = {
   program: ProgramInfo
   questions: FormQuestion[]
   formType: FormType
+  programId: string
   theme: Theme
   endDate: string
   settings: FormSettings
@@ -209,6 +212,16 @@ export default function App() {
   const [formType, setFormType] = useState<FormType>(
     initialDraft.formType ?? "general",
   );
+  const [programId, setProgramId] = useState(initialDraft.programId ?? "");
+  const [programRecords, setProgramRecords] = useState<ProgramRecord[]>([]);
+  const [newProgramName, setNewProgramName] = useState("");
+  const [newProgramYear, setNewProgramYear] = useState(new Date().getFullYear());
+  const [newProgramHeadcount, setNewProgramHeadcount] = useState("");
+  const [comparisonData, setComparisonData] = useState<ProgramComparisonData>({
+    programs: [],
+    years: [],
+    truncated: false,
+  });
   const [theme, setTheme] = useState<Theme>(
     normalizeSelectableTheme(String(initialDraft.theme ?? "green")),
   );
@@ -317,6 +330,10 @@ export default function App() {
     [],
   );
   useEffect(() => {
+    if (!user || user.isAnonymous || requestedFormId) return;
+    void getOwnedPrograms(user.uid).then(setProgramRecords).catch(() => undefined);
+  }, [requestedFormId, user]);
+  useEffect(() => {
     if (
       !authReady ||
       !requestedFormId ||
@@ -345,6 +362,7 @@ export default function App() {
           program,
           questions,
           formType,
+          programId,
           theme,
           endDate,
           settings: formSettings,
@@ -358,6 +376,7 @@ export default function App() {
     program,
     questions,
     formType,
+    programId,
     theme,
     endDate,
     formSettings,
@@ -391,6 +410,7 @@ export default function App() {
         setProgram(form.program);
         setQuestions(form.questions);
         setFormType(form.formType);
+        setProgramId(form.programId);
         setTheme(normalizeTheme(form.theme));
         setEndDate(form.surveyEndDate);
         setFormSettings(normalizeFormSettings(form.settings));
@@ -472,6 +492,7 @@ export default function App() {
     setProgram(emptyProgram);
     setQuestions([]);
     setFormType("general");
+    setProgramId("");
     setTheme("green");
     setFormId(newFormId());
     setEndDate("2026-07-31");
@@ -487,12 +508,40 @@ export default function App() {
     setPage("create");
   };
   const startManualForm = () => {
+    const selectedType = formType;
+    const selectedProgramId = programId;
     startNewForm();
     setCreationMode("manual");
-    setQuestions([
+    setFormType(selectedType);
+    setProgramId(selectedProgramId);
+    setQuestions(ensureAnalyticsQuestions([
       { id: Date.now(), label: "", type: "short_text", required: false },
-    ]);
+    ], selectedType));
     setPage("edit");
+  };
+  const changeFormType = (nextType: FormType) => {
+    setFormType(nextType);
+    setQuestions((current) => ensureAnalyticsQuestions(current, nextType));
+  };
+  const createOrUpdateProgram = async () => {
+    if (!user || !newProgramName.trim()) {
+      setMessage("프로그램명을 입력해 주세요.");
+      return;
+    }
+    try {
+      const saved = await saveProgramRecord(user, {
+        name: newProgramName,
+        year: newProgramYear,
+        selectedHeadcount: Number(newProgramHeadcount) || undefined,
+      });
+      setProgramRecords((current) => [saved, ...current.filter(({ id }) => id !== saved.id)]);
+      setProgramId(saved.id);
+      setNewProgramName("");
+      setNewProgramHeadcount("");
+      setMessage("프로그램을 등록했습니다.");
+    } catch {
+      setMessage("프로그램을 등록하지 못했습니다.");
+    }
   };
   const doLogout = async () => {
     await logout();
@@ -537,8 +586,9 @@ export default function App() {
     try {
       const generated = await generateFormFromDocuments(files, memo);
       setProgram(generated.program);
-      setQuestions(generated.questions);
-      setFormType(generated.formType);
+      const resolvedType = formType === "general" ? generated.formType : formType;
+      setQuestions(ensureAnalyticsQuestions(generated.questions, resolvedType));
+      setFormType(resolvedType);
       setReviewNotes(generated.reviewNotes);
       setTheme(normalizeSelectableTheme(generated.suggestedTheme));
       setFormSettings(settingsFromAiSuggestion(generated.suggestedSettings));
@@ -555,6 +605,10 @@ export default function App() {
   };
   const publish = async () => {
     if (!user) return;
+    if (formType !== "general" && !programId) {
+      setMessage("수요조사·참가신청·만족도조사는 비교할 프로그램을 선택해 주세요.");
+      return;
+    }
     if (!program.programName || !questions.length) {
       setMessage("폼 제목과 질문을 확인해 주세요.");
       return;
@@ -639,6 +693,7 @@ export default function App() {
         formId,
         owner: user,
         program,
+        programId,
         questions,
         formType,
         surveyEndDate: endDate,
@@ -691,6 +746,7 @@ export default function App() {
         targetFormId === formId
           ? {
               program,
+              programId,
               questions,
               formType,
               theme,
@@ -702,6 +758,7 @@ export default function App() {
       setProgram(form.program);
       setQuestions(form.questions);
       setFormType(form.formType);
+      setProgramId(form.programId);
       setTheme(normalizeTheme(form.theme));
       setEndDate(form.surveyEndDate);
       setFormSettings(normalizeFormSettings(form.settings));
@@ -730,16 +787,71 @@ export default function App() {
     setPage("manage");
     setResultLoading(true);
     try {
-      const [active, deleted] = await Promise.all([
+      const [active, deleted, programs] = await Promise.all([
         getOwnedForms(user.uid),
         getDeletedForms(user.uid),
+        getOwnedPrograms(user.uid),
       ]);
       setOwnedForms(active);
       setDeletedForms(deleted);
+      setProgramRecords(programs);
     } catch {
       setMessage("내 폼 목록을 불러오지 못했습니다.");
     } finally {
       setResultLoading(false);
+    }
+  };
+  const openComparison = async () => {
+    setPage("comparison");
+    setResultLoading(true);
+    try {
+      setComparisonData(await getProgramComparisonData());
+    } catch {
+      setMessage("프로그램 비교 데이터를 불러오지 못했습니다.");
+    } finally {
+      setResultLoading(false);
+    }
+  };
+  const classifyOwnedForm = async (form: OwnedForm) => {
+    if (form.formType !== "general" && !form.programId) {
+      setMessage("비교할 프로그램을 먼저 선택해 주세요.");
+      return;
+    }
+    try {
+      const source = await getPublishedForm(form.id, true);
+      const questions = source.questions.map((question) => {
+        if (question.analyticsRole) return question;
+        if (question.type === "select" && /학년/.test(question.label)) return { ...question, analyticsRole: "grade" as const };
+        if (form.formType === "satisfaction" && question.type === "rating") return { ...question, analyticsRole: "overall_satisfaction" as const };
+        if (form.formType === "satisfaction" && question.type === "long_text" && /아쉬|개선/.test(question.label)) return { ...question, analyticsRole: "improvement" as const };
+        if (form.formType === "satisfaction" && question.type === "long_text" && /좋|유익/.test(question.label)) return { ...question, analyticsRole: "strength" as const };
+        return question;
+      });
+      await updateFormClassification(form.id, {
+        programId: form.programId ?? "",
+        formType: form.formType,
+        questions,
+      });
+      setMessage("폼 분류와 통계 문항을 저장했습니다.");
+    } catch {
+      setMessage("폼 분류를 저장하지 못했습니다.");
+    }
+  };
+  const editProgramHeadcount = async (record: ProgramRecord) => {
+    if (!user) return;
+    const input = window.prompt("선발 예정·확정 인원을 입력해 주세요. 비우면 미정으로 저장됩니다.", String(record.selectedHeadcount ?? ""));
+    if (input === null) return;
+    const count = input.trim() ? Number(input) : undefined;
+    if (count !== undefined && (!Number.isInteger(count) || count <= 0)) {
+      setMessage("선발 인원은 1명 이상의 정수로 입력해 주세요.");
+      return;
+    }
+    try {
+      const saved = await saveProgramRecord(user, { ...record, selectedHeadcount: count });
+      setProgramRecords((current) => current.map((item) => item.id === saved.id ? saved : item));
+      setMessage("선발 인원을 수정했습니다.");
+    } catch {
+      setMessage("선발 인원을 수정하지 못했습니다.");
     }
   };
   const deleteOwnedForm = async (form: OwnedForm) => {
@@ -1074,6 +1186,7 @@ export default function App() {
         })),
       );
       setFormType(source.formType);
+      setProgramId(source.programId);
       setTheme(normalizeTheme(source.theme));
       setEndDate(source.surveyEndDate);
       setFormSettings({
@@ -1127,6 +1240,7 @@ export default function App() {
         })),
       );
       setFormType(source.formType);
+      setProgramId(source.programId);
       setTheme(normalizeTheme(source.theme));
       setEndDate(source.surveyEndDate);
       setFormSettings({
@@ -1293,6 +1407,29 @@ export default function App() {
               title="자료를 읽고 폼을 만듭니다"
               text="PDF·PNG·JPG·HWP 참고문서와 담당자 메모를 Gemini가 함께 분석합니다."
             />
+            <section className="card program-setup-card">
+              <div><span className="eyebrow">PROGRAM CLASSIFICATION</span><h2>폼 종류와 프로그램을 선택하세요</h2><p>이 정보로 여러 프로그램의 신청률과 만족도를 정확하게 비교합니다.</p></div>
+              <div className="program-setup-grid">
+                <label>폼 종류<select value={formType} onChange={(event) => changeFormType(event.target.value as FormType)}>
+                  <option value="demand_survey">수요조사</option>
+                  <option value="application">참가신청</option>
+                  <option value="satisfaction">만족도조사</option>
+                  <option value="general">기타</option>
+                </select></label>
+                <label>연결할 프로그램<select value={programId} onChange={(event) => setProgramId(event.target.value)}>
+                  <option value="">{formType === "general" ? "선택 안 함" : "프로그램을 선택하세요"}</option>
+                  {programRecords.map((record) => <option value={record.id} key={record.id}>{record.year} · {record.name}{record.selectedHeadcount ? ` · ${record.selectedHeadcount}명` : ""}</option>)}
+                </select></label>
+              </div>
+              <details className="new-program-panel"><summary>새 프로그램 등록</summary>
+                <div>
+                  <label>프로그램명<input value={newProgramName} onChange={(event) => setNewProgramName(event.target.value)} placeholder="예: 진로 탐색 캠프"/></label>
+                  <label>연도<input type="number" min="2000" max="2100" value={newProgramYear} onChange={(event) => setNewProgramYear(Number(event.target.value))}/></label>
+                  <label>선발 예정·확정 인원<input type="number" min="1" value={newProgramHeadcount} onChange={(event) => setNewProgramHeadcount(event.target.value)} placeholder="수요조사 단계에서는 비워도 됩니다."/></label>
+                  <button type="button" onClick={() => void createOrUpdateProgram()}><Plus/> 프로그램 등록</button>
+                </div>
+              </details>
+            </section>
             <div className="grid two">
               <div className="card">
                 <h2>참고문서</h2>
@@ -1884,6 +2021,15 @@ export default function App() {
             }
           />
         )}
+        {page === 'comparison' && (
+          <ProgramComparisonDashboard
+            data={comparisonData}
+            loading={resultLoading}
+            onBack={() => void openManage()}
+            onRefresh={() => void openComparison()}
+            onAnalyze={summarizeResponses}
+          />
+        )}
         {page === 'manage' && ownedForms.length > 0 && (
           <section className="card version-history-panel">
             <div className="row">
@@ -1994,6 +2140,11 @@ export default function App() {
               title="내가 만든 폼"
               text="폼별 접수 상태, 응답 수와 공유 링크를 관리합니다."
             />
+            <div className="card manage-comparison-callout">
+              <div><BarChart3/><span><b>프로그램 통합 비교</b><small>연도·학년별 신청 경쟁도, 만족도 응답률과 개선 의견을 확인하세요.</small></span></div>
+              <button className="primary" onClick={() => void openComparison()}><BarChart3/> 비교 대시보드</button>
+            </div>
+            {programRecords.length > 0 && <section className="card program-record-list"><h2>등록 프로그램</h2><div>{programRecords.map((record) => <button key={record.id} onClick={() => void editProgramHeadcount(record)}><b>{record.year} · {record.name}</b><span>선발 {record.selectedHeadcount ?? "미정"}명 · 수정</span></button>)}</div></section>}
             {message && <Notice text={message} />}{' '}
             {resultLoading ? (
               <div className="center">
@@ -2056,6 +2207,15 @@ export default function App() {
                               : ''}
                           </small>
                         </strong>
+                        {!form.organizationShared && <div className="manage-classification">
+                          <label>종류<select value={form.formType} onChange={(event) => setOwnedForms((current) => current.map((item) => item.id === form.id ? { ...item, formType: event.target.value as FormType } : item))}>
+                            <option value="demand_survey">수요조사</option><option value="application">참가신청</option><option value="satisfaction">만족도조사</option><option value="general">기타</option>
+                          </select></label>
+                          <label>프로그램<select value={form.programId ?? ""} onChange={(event) => setOwnedForms((current) => current.map((item) => item.id === form.id ? { ...item, programId: event.target.value } : item))}>
+                            <option value="">미분류</option>{programRecords.map((record) => <option value={record.id} key={record.id}>{record.year} · {record.name}</option>)}
+                          </select></label>
+                          <button onClick={() => void classifyOwnedForm(form)}>분류 저장</button>
+                        </div>}
                         <div className="manage-actions">
                           <button
                             className="primary"
