@@ -168,9 +168,3 @@ npm run test:functions:emulator
 - 배포 전에 App Check, 인증 공급자 및 보안 규칙을 확인합니다.
 - 개인정보가 포함된 첨부자료와 응답의 접근 권한·보존 기간을 관리합니다.
 - AI가 생성한 문항과 개인정보 동의 문구는 담당자가 검토합니다.
-
-## 문의
-
-- 강남대학교 대학일자리플러스센터: `031-280-3431~5`
-- 이메일: [job@kangnam.ac.kr](mailto:job@kangnam.ac.kr)
-- 카카오톡 채널: [@강남대 대플](https://pf.kakao.com/_IzWdxj)
